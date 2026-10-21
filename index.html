@@ -243,6 +243,25 @@ textarea.input { min-height: 92px; resize: vertical; }
   background: var(--surface); cursor: pointer; text-align: left; width: 100%;
 }
 .result:hover { border-color: var(--hop); }
+.beer-stats { padding: 16px 18px; }
+.stat-line { display: flex; align-items: center; gap: 14px; }
+.stat-big { font: 800 1.7rem/1 var(--display); color: var(--hop); flex: none; }
+.stat-big.new { font-size: 1.2rem; background: var(--gold); color: #2A1E05; padding: 6px 12px; border-radius: 999px; }
+.friend-stats { display: grid; gap: 8px; margin-top: 8px; }
+.friend-stat { display: flex; align-items: center; gap: 10px; }
+.friend-stat .avatar { width: 32px; height: 32px; font-size: .85rem; }
+.db-list { display: grid; gap: 8px; }
+.db-row {
+  display: grid; grid-template-columns: 60px 1fr; gap: 12px; align-items: center; width: 100%; text-align: left;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 8px; cursor: pointer; color: inherit;
+}
+.db-row:hover { border-color: var(--muted); }
+.db-row .beer-photo { width: 60px; }
+.db-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
+.tag { font-size: 0.76rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--paper); color: var(--muted); border: 1px solid var(--line); }
+.tag.on { background: var(--hop-soft); color: var(--ink); border-color: transparent; }
+.type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 #reader { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 1; }
@@ -303,9 +322,18 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
   position: relative; width: 78px; height: 78px; border-radius: 50%; display: grid; place-items: center;
   background:
     radial-gradient(circle at 50% 50%, var(--surface) 0 58%, transparent 59%),
-    repeating-conic-gradient(var(--tier) 0 6deg, color-mix(in srgb, var(--tier) 70%, var(--surface)) 6deg 12deg);
+    var(--ring, repeating-conic-gradient(var(--tier) 0 6deg, color-mix(in srgb, var(--tier) 70%, var(--surface)) 6deg 12deg));
   box-shadow: inset 0 0 0 3px var(--tier);
 }
+.coaster.flagged { box-shadow: inset 0 0 0 2px rgba(0, 0, 0, .35); }
+.coaster .center-img { width: 58%; height: 58%; border-radius: 50%; object-fit: cover; }
+.coaster .mono {
+  width: 58%; height: 58%; border-radius: 50%; display: grid; place-items: center;
+  background: hsl(var(--hue) 45% 38%); color: #fff; font: 800 1.15rem var(--display); letter-spacing: .02em;
+}
+.coaster.big .mono { font-size: 1.9rem; }
+.badge.small .coaster .mono { font-size: .85rem; }
+.coaster.locked .center-img, .coaster.locked .mono { filter: grayscale(1); opacity: .5; }
 @media (prefers-reduced-motion: no-preference) { .coaster { transition: transform .2s; } }
 .coaster .em { font-size: 2.1rem; line-height: 1; }
 .coaster.locked { background: var(--paper); box-shadow: inset 0 0 0 2px var(--line); }
@@ -324,6 +352,7 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--hop); }
 .badge-detail { text-align: center; }
+.badge-detail .coaster.big { margin: 0 auto; }
 .badge-detail .levels { text-align: left; }
 .levels { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
 .levels li { display: flex; align-items: center; gap: 10px; color: var(--muted); }
@@ -454,6 +483,7 @@ section.stack > h2 + * { margin-top: 10px; }
   <a href="#lijst" data-tab="lijst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>Mijn bieren</a>
   <a href="#activiteit" data-tab="activiteit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Activiteit</a>
   <a href="#inchecken" data-tab="inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Inchecken</a>
+  <a href="#database" data-tab="database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Bierdatabase</a>
   <a href="#badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>Badges</a>
   <a href="#vrienden" data-tab="vrienden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg>Vrienden</a>
   <a href="#profiel" data-tab="profiel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>Profiel</a>
@@ -477,7 +507,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-21.7";
+const APP_VERSION = "2026-10-21.10";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -937,7 +967,7 @@ async function renderPublic(username) {
 // ---------------------------------------------------------------------
 async function showBeer(g, { own }) {
   const b = g.beer;
-  const canEdit = state.user && b.created_by === state.user.id;
+  const canEdit = !!state.user;
   const fact = (label, v) => v != null && v !== "" ? `<div><dt>${label}</dt><dd>${esc(v)}</dd></div>` : "";
 
   const checkinHtml = (c, name) => `
@@ -969,7 +999,7 @@ async function showBeer(g, { own }) {
       ${b.description ? `<p>${esc(b.description)}</p>` : ""}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${state.user ? `<button class="btn" id="againBtn">Opnieuw inchecken</button>` : ""}
-        ${canEdit ? `<button class="btn ghost" id="editBtn">Biergegevens wijzigen</button>` : ""}
+        ${canEdit ? `<button class="btn ghost" id="editBtn">${b.barcode && b.style && b.abv != null ? "Gegevens bewerken" : "Gegevens aanvullen"}</button>` : ""}
       </div>
       <div>
         <h3>${own ? "Jouw check-ins" : "Check-ins"}</h3>
@@ -982,7 +1012,6 @@ async function showBeer(g, { own }) {
   if (again) again.onclick = () => { state.draft = { beer: b }; closeDialog(); location.hash = "inchecken"; if (location.hash === "#inchecken") route(); };
   const edit = $("#editBtn");
   if (edit) edit.onclick = () => editBeer(b);
-
   $("#dlgBody").onclick = async e => {
     const ed = e.target.closest("[data-edit]");
     if (ed) return editCheckin(g.checkins.find(c => c.id === ed.dataset.edit), b);
@@ -1094,9 +1123,12 @@ function editCheckin(c, beer) {
   };
 }
 
-function beerFields(b = {}) {
+function beerFields(b = {}, opts = {}) {
   return `
     <label class="field"><span>Naam van het bier</span><input class="input" name="name" required value="${esc(b.name)}"></label>
+    ${opts.barcode ? `
+    <label class="field"><span>Barcode</span><input class="input" name="barcode" inputmode="numeric" autocomplete="off" placeholder="De cijfers onder de streepjes" value="${esc(b.barcode)}"></label>
+    <p class="muted small" style="margin-top:-8px">Optioneel. Met een barcode herkent de app dit bier voortaan bij het scannen.</p>` : ""}
     <div class="grid2">
       <label class="field"><span>Brouwerij</span><input class="input" name="brewery" value="${esc(b.brewery)}"></label>
       <label class="field"><span>Stijl</span><input class="input" name="style" list="styleList" value="${esc(b.style)}" placeholder="Bijv. Tripel"></label>
@@ -1122,29 +1154,27 @@ function readBeerFields(f) {
     ibu: num(f.get("ibu")),
     country: String(f.get("country") || "").trim() || null,
     description: String(f.get("description") || "").trim() || null,
+    ...(f.has("barcode") ? { barcode: cleanBarcode(f.get("barcode")) || null } : {}),
   };
 }
 
 function editBeer(b) {
-  openDialog(`
-    <form class="stack" id="editForm">
-      <h2>Biergegevens wijzigen</h2>
-      ${beerFields(b)}
-      <button class="btn block" type="submit">Wijzigingen opslaan</button>
-    </form>`);
-  $("#editForm").onsubmit = async e => {
-    e.preventDefault();
-    const data = readBeerFields(new FormData(e.target));
-    if (!data.name) return toast("Vul de naam van het bier in.");
-    const { error } = await sb.from("beers").update(data).eq("id", b.id);
-    if (error) return toast("Opslaan lukte niet: " + error.message);
-    closeDialog(); toast("Wijzigingen opgeslagen"); route();
-  };
+  location.hash = `database/bewerk/${b.id}`;
 }
 
 // ---------------------------------------------------------------------
 // Inchecken
 // ---------------------------------------------------------------------
+// Barcode controleren met het controlecijfer (EAN-8, UPC-A, EAN-13, GTIN-14)
+function cleanBarcode(v) { return String(v || "").replace(/[\s-]/g, ""); }
+function validBarcode(code) {
+  if (!/^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(code)) return false;
+  const digits = [...code].map(Number);
+  const check = digits.pop();
+  const sum = digits.reverse().reduce((s, d, i) => s + d * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10 === check;
+}
+
 function offToPrefill(p, code) {
   const abv = p.nutriments?.alcohol ?? p.nutriments?.alcohol_100g ?? p.nutriments?.alcohol_value;
   return {
@@ -1154,7 +1184,7 @@ function offToPrefill(p, code) {
     abv: abv != null && abv !== "" && !isNaN(Number(abv)) ? Number(abv) : null,
     country: (p.countries || "").split(",")[0].replace(/^en:/, "").trim(),
     image_path: p.image_front_url || null,
-    source: "openfoodfacts",
+    source: "Open Food Facts",
   };
 }
 async function searchOFF(q) {
@@ -1178,11 +1208,33 @@ async function searchOFF(q) {
 async function lookupBarcode(code) {
   const { data } = await sb.from("beers").select("*").eq("barcode", code).maybeSingle();
   if (data) return { beer: data };
+
+  // 1. Alle bronnen tegelijk via de Edge Function in Supabase
   try {
-    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments,countries,image_front_url`);
+    const { data: res, error } = await sb.functions.invoke("barcode-lookup", { body: { code } });
+    if (!error && res) {
+      const f = res.found;
+      if (f) return { prefill: { barcode: code, name: f.name || "", brewery: f.brewery || "", abv: f.abv ?? null, country: f.country || "", image_path: f.image || null, source: f.source } };
+      return { prefill: { barcode: code } };
+    }
+  } catch { /* functie niet beschikbaar: hieronder rechtstreeks proberen */ }
+
+  // 2. Terugvaloptie: rechtstreeks vanuit de browser
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,product_name_nl,product_name_en,brands,nutriments,countries,image_front_url`);
     const j = await r.json();
-    if (j.status === 1 && j.product) return { prefill: offToPrefill(j.product, code) };
-  } catch { /* geen verbinding met Open Food Facts: gewoon handmatig invullen */ }
+    if (j.status === 1 && j.product) return { prefill: { ...offToPrefill(j.product, code), source: "Open Food Facts" } };
+  } catch {}
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${encodeURIComponent(code)}`, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (r.ok) {
+      const it = (await r.json()).items?.[0];
+      if (it?.title) return { prefill: { barcode: code, name: it.title, brewery: it.brand || "", image_path: it.images?.[0] || null, source: "UPCitemdb" } };
+    }
+  } catch {}
   return { prefill: { barcode: code } };
 }
 
@@ -1272,16 +1324,11 @@ function renderCheckin() {
   const chooseHtml = `
     <div class="panel stack" id="chooseBox">
       <h2>Welk bier drink je?</h2>
-      <button class="btn block" id="scanBtn" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>
-        Barcode scannen
-      </button>
-      <div id="reader" hidden></div>
-      <p class="small" id="scanMsg" hidden></p>
-      <label class="btn soft block" style="cursor:pointer">
-        <input type="file" accept="image/*" capture="environment" id="barcodePhoto" hidden>
-        Foto van de barcode maken
-      </label>
+      ${barcodeToolsHtml()}
+      <div class="type-code">
+        <input class="input" id="typedCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode intypen">
+        <button class="btn ghost" type="button" id="typedCodeBtn">Opzoeken</button>
+      </div>
       <div class="or">of</div>
       <label class="field"><span>Zoek een bier</span><input class="input" id="beerSearch" type="search" placeholder="Naam of brouwerij" autocomplete="off"></label>
       <div class="results" id="results"></div>
@@ -1293,15 +1340,16 @@ function renderCheckin() {
         ${photoBlock(d.beer.image_path, d.beer.style)}
         <div><h3>${esc(d.beer.name)}</h3><p class="muted small">${esc([d.beer.brewery, d.beer.style].filter(Boolean).join(", "))}</p></div>
         <button class="btn ghost small" id="changeBtn" type="button">Ander bier</button>
-      </div>` : `
+      </div>
+      <div class="panel beer-stats" id="beerStats"><p class="muted small">Kijken wie dit al heeft gedronken…</p></div>` : `
       <div class="panel stack">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <h2>Nieuw bier</h2>
           <button class="btn ghost small" id="changeBtn" type="button">Annuleren</button>
         </div>
-        ${d.prefill?.source === "openfoodfacts" ? `<p class="muted small">Gegevens gevonden via Open Food Facts. Controleer ze en vul aan waar nodig.</p>` : ""}
-        ${d.prefill?.barcode && d.prefill?.source !== "openfoodfacts" ? `<p class="muted small">Barcode ${esc(d.prefill.barcode)} is nog onbekend. Vul de gegevens in, dan herkent de app dit bier voortaan.</p>` : ""}
-        ${beerFields(d.prefill || {})}
+        ${d.prefill?.source && d.prefill.source !== "manual" ? `<p class="muted small">Gegevens gevonden via ${esc(d.prefill.source)}. Controleer ze en vul aan waar nodig.</p>` : ""}
+        ${d.prefill?.barcode && !d.prefill?.source ? `<p class="muted small">Barcode ${esc(d.prefill.barcode)} is in geen enkele bron bekend. Vul de gegevens in, dan herkent de app dit bier voortaan.</p>` : ""}
+        ${beerFields(d.prefill || {}, { barcode: true })}
       </div>
       ${d.prefill?.barcode ? `
       <div class="panel stack" id="linkBox">
@@ -1354,24 +1402,16 @@ function renderCheckin() {
     </form>`;
 
   if (!d) {
-    $("#scanBtn").onclick = startScan;
-    $("#barcodePhoto").onchange = async e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (typeof ZXing === "undefined") return toast("De scanner kon niet worden geladen. Ververs de pagina.");
-      const msg = $("#scanMsg");
-      msg.hidden = false; msg.textContent = "Barcode zoeken in de foto…";
+    $("#scanBtn").onclick = () => startScan();
+    bindBarcodePhoto(handleBarcode);
+    const lookupTyped = async () => {
+      const code = cleanBarcode($("#typedCode").value);
+      if (!validBarcode(code)) return toast("Deze barcode klopt niet. Controleer de cijfers onder de streepjes.");
       await stopScanner();
-      try {
-        const code = await BarcodeScan.fromFile(file);
-        if (code) await handleBarcode(code);
-        else msg.textContent = "Geen barcode gevonden in de foto. Zorg dat de barcode scherp en goed belicht in beeld is, en probeer het opnieuw.";
-      } catch {
-        msg.textContent = "De foto kon niet worden gelezen. Probeer het opnieuw.";
-      } finally {
-        e.target.value = "";
-      }
+      await handleBarcode(code);
     };
+    $("#typedCodeBtn").onclick = lookupTyped;
+    $("#typedCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); lookupTyped(); } };
     $("#newBtn").onclick = () => { stopScanner(); state.draft = { prefill: { name: $("#beerSearch").value.trim() } }; renderCheckin(); };
     let timer, seq = 0, own = [], ext = [], offState = "idle", offMsg = "";
     const item = (attrs, title, sub) => `
@@ -1436,6 +1476,7 @@ function renderCheckin() {
   }
 
   $("#changeBtn").onclick = () => { state.draft = null; renderCheckin(); };
+  if (d.beer) loadBeerStats(d.beer);
 
   const ls = $("#linkSearch");
   if (ls) {
@@ -1510,7 +1551,8 @@ function renderCheckin() {
       if (!beer) {
         const fields = readBeerFields(f);
         if (!fields.name) throw new Error("Vul de naam van het bier in.");
-        const insert = { ...fields, barcode: d.prefill?.barcode || null, source: d.prefill?.source || "manual", image_path: d.prefill?.image_path || null };
+        if (fields.barcode && !validBarcode(fields.barcode)) throw new Error("Deze barcode klopt niet. Controleer de cijfers onder de streepjes, of laat het veld leeg.");
+        const insert = { ...fields, source: d.prefill?.source || "manual", image_path: d.prefill?.image_path || null };
         const { data, error } = await sb.from("beers").insert(insert).select().single();
         if (error && error.code === "23505" && insert.barcode) {
           const { data: existing } = await sb.from("beers").select("*").eq("barcode", insert.barcode).single();
@@ -1566,7 +1608,84 @@ async function handleBarcode(code) {
   renderCheckin();
 }
 
-async function startScan() {
+async function loadBeerStats(beer) {
+  const box = $("#beerStats");
+  if (!box) return;
+  try {
+    const ids = [state.user.id, ...(await friendIds())];
+    const { data, error } = await sb
+      .from("checkins")
+      .select("user_id, rating, drunk_at, profile:profiles(id, display_name, avatar_path)")
+      .eq("beer_id", beer.id)
+      .in("user_id", ids)
+      .order("drunk_at", { ascending: false });
+    if (error) throw error;
+    if (!$("#beerStats")) return;
+    const mine = data.filter(c => c.user_id === state.user.id);
+    const per = {};
+    for (const c of data.filter(c => c.user_id !== state.user.id)) {
+      const p = (per[c.user_id] ||= { profile: c.profile, n: 0, ratings: [], last: c.drunk_at });
+      p.n++; if (c.rating != null) p.ratings.push(Number(c.rating));
+    }
+    const friends = Object.values(per).sort((a, b) => b.n - a.n);
+    const avg = list => list.length ? nf(list.reduce((s, x) => s + x, 0) / list.length, 2) : null;
+    const myAvg = avg(mine.filter(c => c.rating != null).map(c => Number(c.rating)));
+    const total = friends.reduce((s, f) => s + f.n, 0);
+    box.innerHTML = `
+      <div class="stat-line">
+        <span class="stat-big ${mine.length ? "" : "new"}">${mine.length ? `${mine.length}×` : "Nieuw!"}</span>
+        <span>${mine.length
+          ? `Jij hebt dit bier ${mine.length === 1 ? "één keer" : mine.length + " keer"} gedronken, voor het laatst op ${fmtDate(mine[0].drunk_at)}${myAvg ? `. Je gaf gemiddeld ${myAvg}` : ""}.`
+          : "Dit bier heb je nog nooit ingecheckt. Een nieuwe voor je lijst."}</span>
+      </div>
+      ${friends.length ? `
+        <p class="small" style="margin-top:12px"><b>${friends.length} ${friends.length === 1 ? "vriend heeft" : "vrienden hebben"} dit gedronken</b>, samen ${total} ${total === 1 ? "keer" : "keer"}:</p>
+        <div class="friend-stats">
+          ${friends.map(f => `
+            <div class="friend-stat">
+              ${avatarHtml(f.profile, 32)}
+              <span class="grow"><b>${esc(f.profile?.display_name || "Iemand")}</b> <span class="muted small">${f.n}×${avg(f.ratings) ? `, gemiddeld ${avg(f.ratings)}` : ""}</span></span>
+            </div>`).join("")}
+        </div>` : `<p class="muted small" style="margin-top:10px">Nog geen van je vrienden heeft dit bier ingecheckt.</p>`}`;
+  } catch {
+    if ($("#beerStats")) $("#beerStats").hidden = true;
+  }
+}
+
+function barcodeToolsHtml() {
+  return `
+      <button class="btn block" id="scanBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>
+        Barcode scannen
+      </button>
+      <div id="reader" hidden></div>
+      <p class="small" id="scanMsg" hidden></p>
+      <label class="btn soft block" style="cursor:pointer">
+        <input type="file" accept="image/*" capture="environment" id="barcodePhoto" hidden>
+        Foto van de barcode maken
+      </label>`;
+}
+function bindBarcodePhoto(onCode) {
+  $("#barcodePhoto").onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (typeof ZXing === "undefined") return toast("De scanner kon niet worden geladen. Ververs de pagina.");
+    const msg = $("#scanMsg");
+    msg.hidden = false; msg.textContent = "Barcode zoeken in de foto…";
+    await stopScanner();
+    try {
+      const code = await BarcodeScan.fromFile(file);
+      if (code) await onCode(code);
+      else msg.textContent = "Geen barcode gevonden in de foto. Zorg dat de barcode scherp en goed belicht in beeld is, en probeer het opnieuw.";
+    } catch {
+      msg.textContent = "De foto kon niet worden gelezen. Probeer het opnieuw.";
+    } finally {
+      e.target.value = "";
+    }
+  };
+}
+
+async function startScan(onCode = handleBarcode) {
   const reader = $("#reader"), msg = $("#scanMsg"), btn = $("#scanBtn");
   if (typeof ZXing === "undefined") {
     msg.hidden = false;
@@ -1600,7 +1719,7 @@ async function startScan() {
         if (navigator.vibrate) navigator.vibrate(60);
         await stopScanner();
         btn.lastChild.textContent = " Barcode scannen";
-        await handleBarcode(code);
+        await onCode(code);
         return;
       }
       state.scanner.timer = setTimeout(tick, 90);
@@ -1622,133 +1741,282 @@ async function startScan() {
 // ---------------------------------------------------------------------
 // Badges: berekend uit de check-ins
 // ---------------------------------------------------------------------
+// [code, naam, schrijfwijzen, vlagkleuren]
 const COUNTRIES = [
-  ["NL", "Nederland", "nederland netherlands the-netherlands holland nl pays-bas niederlande paesi-bassi"],
-  ["BE", "België", "belgie belgië belgium belgique be belgien"],
-  ["DE", "Duitsland", "duitsland germany deutschland de allemagne"],
-  ["GB", "Verenigd Koninkrijk", "verenigd-koninkrijk united-kingdom uk gb england engeland scotland schotland wales great-britain groot-brittannie groot-brittannië"],
-  ["IE", "Ierland", "ierland ireland ie eire"],
-  ["FR", "Frankrijk", "frankrijk france fr frankreich"],
-  ["CZ", "Tsjechië", "tsjechie tsjechië czech-republic czechia cz tschechien"],
-  ["US", "Verenigde Staten", "verenigde-staten united-states usa us amerika america united-states-of-america"],
-  ["DK", "Denemarken", "denemarken denmark dk danmark"],
-  ["AT", "Oostenrijk", "oostenrijk austria at osterreich österreich"],
-  ["IT", "Italië", "italie italië italy it italia"],
-  ["ES", "Spanje", "spanje spain es espana españa"],
-  ["PT", "Portugal", "portugal pt"],
-  ["PL", "Polen", "polen poland pl polska"],
-  ["SE", "Zweden", "zweden sweden se sverige"],
-  ["NO", "Noorwegen", "noorwegen norway no norge"],
-  ["FI", "Finland", "finland fi suomi"],
-  ["CH", "Zwitserland", "zwitserland switzerland ch schweiz suisse"],
-  ["LU", "Luxemburg", "luxemburg luxembourg lu"],
-  ["EE", "Estland", "estland estonia ee"],
-  ["LT", "Litouwen", "litouwen lithuania lt"],
-  ["MX", "Mexico", "mexico mx méxico"],
-  ["CA", "Canada", "canada ca"],
-  ["JP", "Japan", "japan jp"],
-  ["CN", "China", "china cn"],
-  ["TH", "Thailand", "thailand th"],
-  ["AU", "Australië", "australie australië australia au"],
-  ["NZ", "Nieuw-Zeeland", "nieuw-zeeland new-zealand nz"],
-  ["BR", "Brazilië", "brazilie brazilië brazil br brasil"],
-  ["ZA", "Zuid-Afrika", "zuid-afrika south-africa za"],
+  ["NL", "Nederland", "nederland netherlands the-netherlands holland nl pays-bas niederlande paesi-bassi", ["#AE1C28", "#FFFFFF", "#21468B"]],
+  ["BE", "België", "belgie belgië belgium belgique be belgien", ["#000000", "#FDDA24", "#EF3340"]],
+  ["DE", "Duitsland", "duitsland germany deutschland de allemagne", ["#000000", "#DD0000", "#FFCE00"]],
+  ["GB", "Verenigd Koninkrijk", "verenigd-koninkrijk united-kingdom uk gb england engeland scotland schotland wales great-britain groot-brittannie groot-brittannië", ["#012169", "#FFFFFF", "#C8102E"]],
+  ["IE", "Ierland", "ierland ireland ie eire", ["#169B62", "#FFFFFF", "#FF883E"]],
+  ["FR", "Frankrijk", "frankrijk france fr frankreich", ["#0055A4", "#FFFFFF", "#EF4135"]],
+  ["CZ", "Tsjechië", "tsjechie tsjechië czech-republic czechia cz tschechien", ["#FFFFFF", "#D7141A", "#11457E"]],
+  ["US", "Verenigde Staten", "verenigde-staten united-states usa us amerika america united-states-of-america", ["#B22234", "#FFFFFF", "#3C3B6E"]],
+  ["DK", "Denemarken", "denemarken denmark dk danmark", ["#C8102E", "#FFFFFF"]],
+  ["AT", "Oostenrijk", "oostenrijk austria at osterreich österreich", ["#ED2939", "#FFFFFF"]],
+  ["IT", "Italië", "italie italië italy it italia", ["#009246", "#FFFFFF", "#CE2B37"]],
+  ["ES", "Spanje", "spanje spain es espana españa", ["#AA151B", "#F1BF00"]],
+  ["PT", "Portugal", "portugal pt", ["#006600", "#FF0000", "#FFE900"]],
+  ["PL", "Polen", "polen poland pl polska", ["#FFFFFF", "#DC143C"]],
+  ["SE", "Zweden", "zweden sweden se sverige", ["#006AA7", "#FECC00"]],
+  ["NO", "Noorwegen", "noorwegen norway no norge", ["#BA0C2F", "#FFFFFF", "#00205B"]],
+  ["FI", "Finland", "finland fi suomi", ["#FFFFFF", "#002F6C"]],
+  ["IS", "IJsland", "ijsland iceland is island", ["#02529C", "#FFFFFF", "#DC1E35"]],
+  ["CH", "Zwitserland", "zwitserland switzerland ch schweiz suisse", ["#DA291C", "#FFFFFF"]],
+  ["LU", "Luxemburg", "luxemburg luxembourg lu", ["#EF3340", "#FFFFFF", "#00A3E0"]],
+  ["EE", "Estland", "estland estonia ee", ["#0072CE", "#000000", "#FFFFFF"]],
+  ["LV", "Letland", "letland latvia lv", ["#9E3039", "#FFFFFF"]],
+  ["LT", "Litouwen", "litouwen lithuania lt", ["#FDB913", "#006A44", "#C1272D"]],
+  ["SK", "Slowakije", "slowakije slovakia sk", ["#FFFFFF", "#0B4EA2", "#EE1C25"]],
+  ["SI", "Slovenië", "slovenie slovenië slovenia si", ["#FFFFFF", "#005DA4", "#ED1C24"]],
+  ["HR", "Kroatië", "kroatie kroatië croatia hr", ["#FF0000", "#FFFFFF", "#171796"]],
+  ["HU", "Hongarije", "hongarije hungary hu", ["#CD2A3E", "#FFFFFF", "#436F4D"]],
+  ["GR", "Griekenland", "griekenland greece gr", ["#0D5EAF", "#FFFFFF"]],
+  ["UA", "Oekraïne", "oekraine oekraïne ukraine ua", ["#0057B7", "#FFD700"]],
+  ["TR", "Turkije", "turkije turkey tr turkiye türkiye", ["#E30A17", "#FFFFFF"]],
+  ["MX", "Mexico", "mexico mx méxico", ["#006847", "#FFFFFF", "#CE1126"]],
+  ["CA", "Canada", "canada ca", ["#FF0000", "#FFFFFF"]],
+  ["BR", "Brazilië", "brazilie brazilië brazil br brasil", ["#009C3B", "#FFDF00", "#002776"]],
+  ["AR", "Argentinië", "argentinie argentinië argentina ar", ["#74ACDF", "#FFFFFF", "#F6B40E"]],
+  ["PE", "Peru", "peru pe", ["#D91023", "#FFFFFF"]],
+  ["JP", "Japan", "japan jp", ["#FFFFFF", "#BC002D"]],
+  ["KR", "Zuid-Korea", "zuid-korea south-korea korea kr", ["#FFFFFF", "#CD2E3A", "#0047A0", "#000000"]],
+  ["CN", "China", "china cn", ["#EE1C25", "#FFFF00"]],
+  ["VN", "Vietnam", "vietnam vn", ["#DA251D", "#FFFF00"]],
+  ["TH", "Thailand", "thailand th", ["#A51931", "#F4F5F8", "#2D2A4A"]],
+  ["SG", "Singapore", "singapore sg", ["#EF3340", "#FFFFFF"]],
+  ["IN", "India", "india in", ["#FF9933", "#FFFFFF", "#138808"]],
+  ["AU", "Australië", "australie australië australia au", ["#012169", "#FFFFFF", "#E4002B"]],
+  ["NZ", "Nieuw-Zeeland", "nieuw-zeeland new-zealand nz", ["#012169", "#FFFFFF", "#C8102E"]],
+  ["ZA", "Zuid-Afrika", "zuid-afrika south-africa za", ["#007A4D", "#FFB612", "#DE3831", "#002395"]],
+  ["KE", "Kenia", "kenia kenya ke", ["#000000", "#BB0000", "#006600"]],
 ];
 function normCountry(raw) {
   if (!raw) return null;
   const k = String(raw).toLowerCase().replace(/^[a-z]{2}:/, "").trim().replace(/\s+/g, "-");
   if (!k) return null;
-  for (const [code, name, al] of COUNTRIES) if (al.split(" ").includes(k)) return { code, name };
+  for (const [code, name, al, colors] of COUNTRIES) if (al.split(" ").includes(k) || name.toLowerCase() === k) return { code, name, colors };
   const t = String(raw).replace(/^[a-z]{2}:/, "").trim();
-  return { code: null, name: t[0].toUpperCase() + t.slice(1) };
+  return { code: null, name: t[0].toUpperCase() + t.slice(1), colors: null };
 }
 function flag(code) {
   return code ? String.fromCodePoint(...[...code].map(c => 0x1F1A5 + c.charCodeAt(0))) : "🏳️";
 }
+function hashHue(str) {
+  let h = 2166136261;
+  for (const ch of str) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) * 137.508) % 360 | 0;
+}
+function initials(name) {
+  const words = name.replace(/\b(brouwerij|brasserie|brewery|brewing|brauerei|bierbrouwerij|co\.?|company|de|het|the)\b/gi, " ").trim().split(/\s+/).filter(Boolean);
+  const w = words.length ? words : [name];
+  return (w.length === 1 ? w[0].slice(0, 2) : w.slice(0, 2).map(x => x[0]).join("")).toUpperCase();
+}
 
+// [id, naam, emoji, meervoud, herkenning]
 const STYLE_GROUPS = [
   ["tripel", "Tripelridder", "🔱", "tripels", /tripel/],
-  ["ipa", "Hopkop", "🌿", "IPA’s en pale ales", /ipa|pale ale|apa\b/],
+  ["ipa", "Hopkop", "🌿", "IPA’s en pale ales", /ipa|pale ale|\bapa\b/],
+  ["hazy", "Troebel water", "🌫️", "NEIPA’s en hazy IPA’s", /neipa|new england|hazy|juicy/],
+  ["imperial", "Keizerlijk", "👑", "imperial- en double-bieren", /imperial|imperiaal|double ipa|\bdipa\b|triple ipa/],
   ["stout", "Donkere kant", "🌑", "stouts en porters", /stout|porter/],
   ["wit", "Witte wolk", "☁️", "witbieren en weizens", /wit|weizen|weiss|weiß|wheat|blanche/],
-  ["sour", "Zuurpruim", "🍋", "zure bieren", /sour|zuur|gose|berliner|lambiek|lambic|geuze|gueuze/],
-  ["pils", "Pilsener", "🥂", "pilsjes en lagers", /pils|lager|helles|kölsch|kolsch/],
+  ["sour", "Zuurpruim", "🍋", "zure bieren", /sour|zuur|gose|berliner/],
+  ["lambic", "Lambiekjager", "🏺", "lambieken en geuzes", /lambiek|lambic|geuze|gueuze|faro/],
+  ["pils", "Pilsener", "🥂", "pilsjes en lagers", /pils|lager|helles|kölsch|kolsch|export/],
   ["abdij", "Abdijganger", "⛪", "dubbels, quadrupels en trappisten", /dubbel|quad|abdij|abbey|trappist/],
   ["bock", "Bokkenrijder", "🐐", "bokbieren", /\bbock|\bbok\b|bokbier/],
   ["blond", "Blonde jongen", "🌾", "blonde bieren", /blond|golden/],
   ["saison", "Boerenknecht", "🚜", "saisons", /saison|farmhouse/],
-  ["fruit", "Fruitmand", "🍒", "fruitbieren", /fruit|kriek|framboos|raspberry|cherry/],
+  ["fruit", "Fruitmand", "🍒", "fruitbieren", /fruit|kriek|framboos|raspberry|cherry|mango|passion/],
+  ["amber", "Roodkapje", "🧣", "amber- en rode bieren", /amber|red ale|\brood|rouge|irish red/],
+  ["brown", "Bruine boon", "🫘", "bruine bieren", /brown|bruin|oud bruin/],
+  ["barley", "Gerstewijn", "🍷", "barleywines", /barley ?wine|gerstewijn/],
+  ["smoke", "Rookpluim", "🔥", "rookbieren", /rauch|smoked|rook/],
+  ["radler", "Fietser", "🚲", "radlers", /radler|shandy/],
+  ["strongbe", "Duivelse zaak", "😈", "Belgische sterke bieren", /strong|sterk/],
 ];
 const NONALC = /alcoholvrij|alcohol-?free|non-?alcoholic|\b0[.,]0\b/;
 
 const TIER_COLORS = ["#B87333", "#A9AEB4", "#D9A21B", "#4FA3A5", "#7C6BD6", "#C2417B", "#2E7D4F", "#1F2A44"];
+const BADGE_CATS = [
+  ["algemeen", "Verzamelen"], ["stijl", "Bierstijlen"], ["land", "Landen"], ["brouwerij", "Brouwerijen"],
+  ["moment", "Momenten"], ["feest", "Feestdagen en seizoenen"], ["sociaal", "Samen"],
+];
+const many = (one, more) => t => t === 1 ? one : more.replace("#", t);
 
-// Statische badge-families
 const BADGE_FAMILIES = {
-  unique:    { name: "Verzamelaar", emoji: "🍺", t: [1, 10, 25, 50, 100, 250, 500, 1000], desc: t => `Drink ${t} ${t === 1 ? "bier" : "verschillende bieren"}` },
-  checkins:  { name: "Vaste gast", emoji: "🔁", t: [10, 50, 100, 250, 500], desc: t => `Check ${t} keer een bier in` },
-  countries: { name: "Wereldreiziger", emoji: "🌍", t: [3, 5, 10, 20, 30], desc: t => `Drink bier uit ${t} verschillende landen` },
-  breweries: { name: "Brouwerijhopper", emoji: "🏭", t: [10, 25, 50, 100], desc: t => `Drink bier van ${t} verschillende brouwerijen` },
-  strong:    { name: "Sterk spul", emoji: "💪", t: [1, 5, 10, 25], desc: t => `Drink ${t} ${t === 1 ? "bier" : "verschillende bieren"} van 10% of meer` },
-  nonalc:    { name: "Bob", emoji: "🚗", t: [1, 5, 10, 25], desc: t => `Drink ${t} ${t === 1 ? "alcoholvrij bier" : "verschillende alcoholvrije bieren"}` },
-  photos:    { name: "Fotograaf", emoji: "📸", t: [5, 25, 100], desc: t => `Voeg bij ${t} check-ins een foto toe` },
-  notes:     { name: "Proefnotitie", emoji: "✍️", t: [10, 50, 100], desc: t => `Schrijf bij ${t} check-ins een notitie` },
-  night:     { name: "Nachtuil", emoji: "🦉", t: [1, 5, 10], desc: t => `Check ${t} keer in tussen middernacht en 4 uur ’s nachts` },
-  places:    { name: "Op stap", emoji: "📍", t: [5, 10, 25, 50], desc: t => `Check in op ${t} verschillende locaties` },
+  unique:    { cat: "algemeen", name: "Verzamelaar", emoji: "🍺", t: [1, 10, 25, 50, 100, 250, 500, 1000, 2500], desc: many("Drink je eerste bier", "Drink # verschillende bieren") },
+  checkins:  { cat: "algemeen", name: "Vaste gast", emoji: "🔁", t: [10, 50, 100, 250, 500, 1000, 2500], desc: t => `Check ${t} keer een bier in` },
+  countries: { cat: "algemeen", name: "Wereldreiziger", emoji: "🌍", t: [3, 5, 10, 20, 30, 50], desc: t => `Drink bier uit ${t} verschillende landen` },
+  breweries: { cat: "algemeen", name: "Brouwerijhopper", emoji: "🏭", t: [10, 25, 50, 100, 250, 500], desc: t => `Drink bier van ${t} verschillende brouwerijen` },
+  styles:    { cat: "algemeen", name: "Alleseter", emoji: "🎨", t: [5, 10, 15, 20], desc: t => `Drink ${t} verschillende soorten bier` },
+  places:    { cat: "algemeen", name: "Op stap", emoji: "📍", t: [5, 10, 25, 50, 100], desc: t => `Check in op ${t} verschillende locaties` },
+  loyal:     { cat: "algemeen", name: "Trouwe drinker", emoji: "💛", t: [3, 5, 10, 25, 50], desc: t => `Drink hetzelfde bier ${t} keer` },
+  tasting:   { cat: "algemeen", name: "Proeverij", emoji: "🧪", t: [3, 5, 8, 12], desc: t => `Drink ${t} verschillende bieren op één dag` },
+  strong:    { cat: "algemeen", name: "Sterk spul", emoji: "💪", t: [1, 5, 10, 25, 50], desc: many("Drink een bier van 10% of meer", "Drink # verschillende bieren van 10% of meer") },
+  heavy:     { cat: "algemeen", name: "Zwaargewicht", emoji: "🏋️", t: [1, 5, 10], desc: many("Drink een bier van 12% of meer", "Drink # verschillende bieren van 12% of meer") },
+  light:     { cat: "algemeen", name: "Lichtgewicht", emoji: "🪶", t: [5, 10, 25], desc: t => `Drink ${t} verschillende bieren van 4% of minder` },
+  nonalc:    { cat: "algemeen", name: "Bob", emoji: "🚗", t: [1, 5, 10, 25, 50], desc: many("Drink een alcoholvrij bier", "Drink # verschillende alcoholvrije bieren") },
+  bitter:    { cat: "algemeen", name: "Bitterbal", emoji: "🟤", t: [3, 10, 25], desc: t => `Drink ${t} verschillende bieren met 60 IBU of meer` },
+  tap:       { cat: "algemeen", name: "Van de tap", emoji: "🚰", t: [10, 25, 50, 100, 250], desc: t => `Drink ${t} keer een bier van de tap` },
+  bottle:    { cat: "algemeen", name: "Flessenpost", emoji: "🍾", t: [10, 25, 50, 100, 250], desc: t => `Drink ${t} keer een bier uit de fles` },
+  can:       { cat: "algemeen", name: "Blikkie", emoji: "🥫", t: [10, 25, 50, 100, 250], desc: t => `Drink ${t} keer een bier uit blik` },
+  rated:     { cat: "algemeen", name: "Jurylid", emoji: "⚖️", t: [10, 50, 100, 250, 500], desc: t => `Geef ${t} check-ins een score` },
+  perfect:   { cat: "algemeen", name: "Meesterwerk", emoji: "🌟", t: [1, 5, 10], desc: many("Geef een bier de volle 5 sterren", "Geef # keer de volle 5 sterren") },
+  harsh:     { cat: "algemeen", name: "Kritische noot", emoji: "🧐", t: [1, 5], desc: many("Geef een bier 1 ster of minder", "Geef # keer 1 ster of minder") },
+  photos:    { cat: "algemeen", name: "Fotograaf", emoji: "📸", t: [5, 25, 100, 250], desc: t => `Voeg bij ${t} check-ins een foto toe` },
+  notes:     { cat: "algemeen", name: "Proefnotitie", emoji: "✍️", t: [10, 50, 100, 250], desc: t => `Schrijf bij ${t} check-ins een notitie` },
+
+  night:     { cat: "moment", name: "Nachtuil", emoji: "🦉", t: [1, 5, 10, 25], desc: many("Check in tussen middernacht en 4 uur ’s nachts", "Check # keer in tussen middernacht en 4 uur ’s nachts") },
+  early:     { cat: "moment", name: "Vroege vogel", emoji: "🐓", t: [1, 5, 10], desc: many("Check in voor 12 uur ’s middags", "Check # keer in voor 12 uur ’s middags") },
+  friday:    { cat: "moment", name: "Vrijdagmiddagborrel", emoji: "🎉", t: [1, 5, 25, 50], desc: many("Check in op vrijdag tussen 16 en 20 uur", "Check # keer in op vrijdag tussen 16 en 20 uur") },
+  weekend:   { cat: "moment", name: "Weekendkrijger", emoji: "🛋️", t: [10, 25, 100, 250], desc: t => `Check ${t} keer in op zaterdag of zondag` },
+  monday:    { cat: "moment", name: "Maandagmiddel", emoji: "☕", t: [1, 5, 10], desc: many("Check in op een maandag", "Check # keer in op een maandag") },
+  streak:    { cat: "moment", name: "Op dreef", emoji: "📆", t: [3, 5, 7, 14, 30], desc: t => `Check ${t} dagen achter elkaar in` },
+  weeks:     { cat: "moment", name: "Elke week raak", emoji: "🗓️", t: [4, 8, 12, 26, 52], desc: t => `Check ${t} weken achter elkaar minstens één keer in` },
+  tour:      { cat: "moment", name: "Kroegentocht", emoji: "🚶", t: [2, 3, 5], desc: t => `Check op één dag in op ${t} verschillende locaties` },
+  years:     { cat: "moment", name: "Jubilaris", emoji: "🎂", t: [1, 2, 3, 5, 10], desc: many("Gebruik de bierlijst een jaar", "Gebruik de bierlijst # jaar") },
+
+  kingsday:  { cat: "feest", name: "Oranjeboven", emoji: "👑", t: [1, 2, 3, 5], desc: many("Check in op Koningsdag", "Check in op # verschillende Koningsdagen") },
+  newyear:   { cat: "feest", name: "Gelukkig nieuwjaar", emoji: "🎆", t: [1, 2, 3, 5], desc: many("Check in op oudejaarsavond of nieuwjaarsdag", "Check in tijdens # jaarwisselingen") },
+  xmas:      { cat: "feest", name: "Kerstbiertje", emoji: "🎄", t: [1, 2, 3, 5], desc: many("Check in tijdens de kerstdagen", "Check in tijdens # verschillende kerstdagen") },
+  valentine: { cat: "feest", name: "Liefde gaat door de keel", emoji: "💘", t: [1, 2, 3], desc: many("Check in op Valentijnsdag", "Check in op # Valentijnsdagen") },
+  patrick:   { cat: "feest", name: "Sláinte!", emoji: "☘️", t: [1, 2, 3], desc: many("Drink een stout of Iers bier op 17 maart", "Doe dat # jaar") },
+  bockseason:{ cat: "feest", name: "Bokbierseizoen", emoji: "🍂", t: [1, 5, 10, 25], desc: many("Drink een bokbier in september, oktober of november", "Drink # verschillende bokbieren in het najaar") },
+  oktober:   { cat: "feest", name: "O’zapft is!", emoji: "🥨", t: [1, 5, 10], desc: many("Drink een Duits bier in september of oktober", "Drink # verschillende Duitse bieren in september of oktober") },
+  summer:    { cat: "feest", name: "Terrasweer", emoji: "☀️", t: [5, 10, 25], desc: t => `Drink ${t} verschillende witbieren, weizens of pilsjes in de zomer` },
+  winter:    { cat: "feest", name: "Winterwarmer", emoji: "❄️", t: [1, 5, 10, 25], desc: many("Drink een stout, quadrupel of barleywine in de winter", "Drink er # verschillende in de winter") },
+
+  cheersGiven:    { cat: "sociaal", name: "Proostmeester", emoji: "🍻", t: [1, 10, 50, 100, 250], desc: many("Proost een keer mee met een vriend", "Proost # keer mee met vrienden") },
+  cheersReceived: { cat: "sociaal", name: "Populair", emoji: "🥳", t: [1, 10, 50, 100, 250], desc: many("Krijg je eerste proost", "Krijg # keer een proost") },
+  comments:       { cat: "sociaal", name: "Kletskous", emoji: "💬", t: [1, 10, 50, 100], desc: many("Plaats je eerste reactie", "Plaats # reacties") },
 };
 
-function computeBadges(checkins) {
+function computeBadges(checkins, extra = {}) {
   const sorted = [...checkins].filter(c => c.beer).sort((a, b) => a.drunk_at.localeCompare(b.drunk_at));
   const fam = {};
   const ensure = (key, meta) => (fam[key] ||= { key, ...meta, count: 0, dates: [] });
-  const bump = (key, meta, date) => {
+  const setCount = (key, meta, value, date) => {
     const f = ensure(key, meta);
-    f.count++;
-    if (f.t.includes(f.count)) f.dates.push(date);
+    if (value <= f.count) return;
+    for (const t of f.t) if (t > f.count && t <= value) f.dates.push(date);
+    f.count = value;
   };
-  const seenBeer = new Set(), seenCountry = new Set(), seenBrewery = new Set(), seenPlace = new Set();
-  for (const k of Object.keys(BADGE_FAMILIES)) ensure(k, BADGE_FAMILIES[k]);
+  const bump = (key, meta, date) => setCount(key, meta, (fam[key]?.count || 0) + 1, date);
+  const once = new Set();
+  const bumpOnce = (key, id, date) => { if (once.has(key + "|" + id)) return; once.add(key + "|" + id); bump(key, BADGE_FAMILIES[key], date); };
+  const B = BADGE_FAMILIES;
+  for (const k of Object.keys(B)) ensure(k, B[k]);
+  for (const [id, name, emoji, plural] of STYLE_GROUPS) ensure("style:" + id, { cat: "stijl", name, emoji, t: [5, 10, 25, 50, 100], desc: t => `Drink ${t} verschillende ${plural}` });
+
+  const seenBeer = new Set(), seenCountry = new Set(), seenBrewery = new Set(), seenPlace = new Set(), seenStyle = new Set();
+  const perBeer = {}, perDayBeers = {}, perDayPlaces = {};
+  const breweryImg = {};
+  let prevDay = null, streak = 0, prevWeek = null, weekRun = 0, first = null;
+  const dayKey = d => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const weekIndex = d => Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000 + 3) / 7);
 
   for (const c of sorted) {
-    const d = c.drunk_at, b = c.beer;
-    bump("checkins", BADGE_FAMILIES.checkins, d);
-    if (c.photo_path) bump("photos", BADGE_FAMILIES.photos, d);
-    if (c.notes) bump("notes", BADGE_FAMILIES.notes, d);
-    const h = new Date(d).getHours();
-    if (h >= 0 && h < 4) bump("night", BADGE_FAMILIES.night, d);
+    const iso = c.drunk_at, b = c.beer, dt = new Date(iso);
+    const h = dt.getHours(), wd = dt.getDay(), m = dt.getMonth() + 1, day = dt.getDate(), y = dt.getFullYear();
+    const style = (b.style || "").toLowerCase();
+    const abv = b.abv != null ? Number(b.abv) : null;
+    const ct = normCountry(b.country);
+    first ||= dt;
+
+    bump("checkins", B.checkins, iso);
+    if (c.photo_path) bump("photos", B.photos, iso);
+    if (c.notes) bump("notes", B.notes, iso);
+    if (c.rating != null) {
+      bump("rated", B.rated, iso);
+      if (Number(c.rating) >= 5) bump("perfect", B.perfect, iso);
+      if (Number(c.rating) <= 1) bump("harsh", B.harsh, iso);
+    }
+    if (c.serving === "tap") bump("tap", B.tap, iso);
+    if (c.serving === "fles") bump("bottle", B.bottle, iso);
+    if (c.serving === "blik") bump("can", B.can, iso);
+    if (h < 4) bump("night", B.night, iso);
+    if (h >= 6 && h < 12) bump("early", B.early, iso);
+    if (wd === 5 && h >= 16 && h < 20) bump("friday", B.friday, iso);
+    if (wd === 0 || wd === 6) bump("weekend", B.weekend, iso);
+    if (wd === 1) bump("monday", B.monday, iso);
+
     const place = (c.location_name || "").trim().toLowerCase();
-    if (place && !seenPlace.has(place)) { seenPlace.add(place); bump("places", BADGE_FAMILIES.places, d); }
+    if (place && !seenPlace.has(place)) { seenPlace.add(place); bump("places", B.places, iso); }
+    const dk = dayKey(dt);
+    if (place) { (perDayPlaces[dk] ||= new Set()).add(place); setCount("tour", B.tour, perDayPlaces[dk].size, iso); }
+    (perDayBeers[dk] ||= new Set()).add(c.beer_id);
+    setCount("tasting", B.tasting, perDayBeers[dk].size, iso);
+    perBeer[c.beer_id] = (perBeer[c.beer_id] || 0) + 1;
+    setCount("loyal", B.loyal, perBeer[c.beer_id], iso);
+
+    if (dk !== prevDay) {
+      const yesterday = new Date(dt); yesterday.setDate(dt.getDate() - 1);
+      streak = prevDay === dayKey(yesterday) ? streak + 1 : 1;
+      prevDay = dk;
+      setCount("streak", B.streak, streak, iso);
+    }
+    const wk = weekIndex(dt);
+    if (wk !== prevWeek) { weekRun = prevWeek === wk - 1 ? weekRun + 1 : 1; prevWeek = wk; setCount("weeks", B.weeks, weekRun, iso); }
+    setCount("years", B.years, Math.floor((dt - first) / (365.25 * 86400000)), iso);
+
+    if (m === 4 && day === 27) bumpOnce("kingsday", y, iso);
+    if ((m === 12 && day === 31) || (m === 1 && day === 1)) bumpOnce("newyear", m === 12 ? y : y - 1, iso);
+    if (m === 12 && day >= 24 && day <= 26) bumpOnce("xmas", y, iso);
+    if (m === 2 && day === 14) bumpOnce("valentine", y, iso);
+    if (m === 3 && day === 17 && (/stout|porter/.test(style) || ct?.code === "IE")) bumpOnce("patrick", y, iso);
 
     if (seenBeer.has(c.beer_id)) continue;
+    // Vanaf hier: alleen de eerste keer dat je dit bier drinkt
     seenBeer.add(c.beer_id);
-    bump("unique", BADGE_FAMILIES.unique, d);
-    if (b.abv != null && Number(b.abv) >= 10) bump("strong", BADGE_FAMILIES.strong, d);
-    const style = (b.style || "").toLowerCase();
-    if (NONALC.test(style) || (b.abv != null && Number(b.abv) <= 0.5)) bump("nonalc", BADGE_FAMILIES.nonalc, d);
+    bump("unique", B.unique, iso);
+    if (abv != null && abv >= 10) bump("strong", B.strong, iso);
+    if (abv != null && abv >= 12) bump("heavy", B.heavy, iso);
+    if (abv != null && abv > 0.5 && abv <= 4) bump("light", B.light, iso);
+    if (NONALC.test(style) || (abv != null && abv <= 0.5)) bump("nonalc", B.nonalc, iso);
+    if (b.ibu != null && Number(b.ibu) >= 60) bump("bitter", B.bitter, iso);
+    if (m >= 9 && m <= 11 && /\bbock|\bbok\b|bokbier/.test(style)) bump("bockseason", B.bockseason, iso);
+    if (m >= 9 && m <= 10 && ct?.code === "DE") bump("oktober", B.oktober, iso);
+    if (m >= 6 && m <= 8 && /wit|weizen|weiss|wheat|blanche|pils|lager|helles/.test(style)) bump("summer", B.summer, iso);
+    if ((m === 12 || m <= 2) && /stout|porter|quad|barley ?wine|gerstewijn|imperial/.test(style)) bump("winter", B.winter, iso);
 
-    const ct = normCountry(b.country);
     if (ct) {
       const ck = (ct.code || ct.name).toLowerCase();
-      if (!seenCountry.has(ck)) { seenCountry.add(ck); bump("countries", BADGE_FAMILIES.countries, d); }
-      bump("country:" + ck, { name: `Bier uit ${ct.name}`, emoji: flag(ct.code), t: [10, 25, 50, 100], desc: t => `Drink ${t} verschillende bieren uit ${ct.name}`, group: "country" }, d);
+      if (!seenCountry.has(ck)) { seenCountry.add(ck); bump("countries", B.countries, iso); }
+      bump("country:" + ck, {
+        cat: "land", name: `Bier uit ${ct.name}`, emoji: flag(ct.code), colors: ct.colors,
+        t: [5, 10, 25, 50, 100, 250], desc: t => `Drink ${t} verschillende bieren uit ${ct.name}`,
+      }, iso);
     }
     const br = (b.brewery || "").trim();
     if (br) {
       const bk = br.toLowerCase();
-      if (!seenBrewery.has(bk)) { seenBrewery.add(bk); bump("breweries", BADGE_FAMILIES.breweries, d); }
-      bump("brewery:" + bk, { name: `Fan van ${br}`, emoji: "🏷️", t: [5, 10, 25], desc: t => `Drink ${t} verschillende bieren van ${br}`, group: "brewery" }, d);
+      if (!seenBrewery.has(bk)) { seenBrewery.add(bk); bump("breweries", B.breweries, iso); }
+      breweryImg[bk] ||= b.image_path || c.photo_path || null;
+      bump("brewery:" + bk, {
+        cat: "brouwerij", name: br, emoji: null, monogram: initials(br), hue: hashHue(bk),
+        t: [3, 5, 10, 25, 50], desc: t => `Drink ${t} verschillende bieren van ${br}`,
+      }, iso);
     }
     for (const [id, name, emoji, plural, re] of STYLE_GROUPS) {
-      if (re.test(style)) bump("style:" + id, { name, emoji, t: [5, 10, 25, 50], desc: t => `Drink ${t} verschillende ${plural}`, group: "style" }, d);
+      if (re.test(style)) {
+        bump("style:" + id, fam["style:" + id], iso);
+        if (!seenStyle.has(id)) { seenStyle.add(id); bump("styles", B.styles, iso); }
+      }
     }
+  }
+  for (const [bk, img] of Object.entries(breweryImg)) if (fam["brewery:" + bk]) fam["brewery:" + bk].image = img;
+
+  for (const [key, dates] of Object.entries(extra)) {
+    if (!B[key]) continue;
+    [...dates].sort().forEach(d => bump(key, B[key], d));
   }
 
   return Object.values(fam).map(f => {
     const level = f.dates.length;
     const next = f.t[level];
-    const prev = level ? f.t[level - 1] : 0;
     return {
-      key: f.key, name: f.name, emoji: f.emoji, group: f.group || "general",
+      key: f.key, name: f.name, emoji: f.emoji, cat: f.cat, colors: f.colors, image: f.image, monogram: f.monogram, hue: f.hue,
       level, maxLevel: f.t.length, thresholds: f.t, dates: f.dates, count: f.count,
       earnedAt: level ? f.dates[level - 1] : null,
       next, desc: f.desc(next ?? f.t[f.t.length - 1]), descOf: f.desc,
@@ -1757,15 +2025,30 @@ function computeBadges(checkins) {
   });
 }
 
+function coasterHtml(b, cls = "") {
+  const earned = b.level > 0;
+  const tier = TIER_COLORS[Math.max(0, b.level - 1)] || TIER_COLORS.at(-1);
+  let ring = "";
+  if (earned && b.colors) {
+    const seg = 360 / 24, n = b.colors.length;
+    ring = `--ring: repeating-conic-gradient(${b.colors.map((c, i) => `${c} ${i * seg}deg ${(i + 1) * seg}deg`).join(", ")});`;
+  }
+  const img = b.image ? photoUrl(b.image) : null;
+  const center = img
+    ? `<img class="center-img" src="${esc(img)}" alt="" loading="lazy">`
+    : b.monogram
+      ? `<span class="mono" style="--hue:${b.hue}">${esc(b.monogram)}</span>`
+      : `<span class="em" aria-hidden="true">${b.emoji}</span>`;
+  return `<span class="coaster ${cls} ${earned ? "" : "locked"} ${b.colors ? "flagged" : ""}" style="--tier:${earned ? tier : "var(--line)"};${ring}">
+    ${center}${earned ? `<span class="lvl">${b.level}</span>` : ""}
+  </span>`;
+}
+
 function badgeHtml(b, small) {
   const earned = b.level > 0;
-  const color = TIER_COLORS[Math.max(0, b.level - 1)] || TIER_COLORS[TIER_COLORS.length - 1];
   return `
-    <button type="button" class="badge ${small ? "small" : ""}" data-badge="${esc(b.key)}" style="--tier:${earned ? color : "var(--line)"}">
-      <span class="coaster ${earned ? "" : "locked"}">
-        <span class="em" aria-hidden="true">${b.emoji}</span>
-        ${earned ? `<span class="lvl">${b.level}</span>` : ""}
-      </span>
+    <button type="button" class="badge ${small ? "small" : ""}" data-badge="${esc(b.key)}">
+      ${coasterHtml(b)}
       <span class="badge-name">${esc(b.name)}</span>
       ${small ? "" : earned
         ? `<span class="muted small">${b.level === b.maxLevel ? "Hoogste niveau" : `Niveau ${b.level}`}</span>`
@@ -1774,22 +2057,23 @@ function badgeHtml(b, small) {
 }
 
 function showBadgeDialog(b) {
+  if (!b) return;
   const earned = b.level > 0;
   openDialog(`
-    <div class="stack badge-detail" style="--tier:${earned ? TIER_COLORS[b.level - 1] || TIER_COLORS.at(-1) : "var(--line)"}">
-      <span class="coaster big ${earned ? "" : "locked"}"><span class="em" aria-hidden="true">${b.emoji}</span>${earned ? `<span class="lvl">${b.level}</span>` : ""}</span>
+    <div class="stack badge-detail">
+      ${coasterHtml(b, "big")}
       <h2>${esc(b.name)}</h2>
       ${earned ? `<p class="muted">Niveau ${b.level} van ${b.maxLevel}, verdiend op ${fmtDate(b.earnedAt)}</p>` : `<p class="muted">Nog niet verdiend</p>`}
       ${b.next ? `
         <div>
           <p><b>Volgende niveau:</b> ${esc(b.desc)}</p>
-          <span class="bar" aria-hidden="true"><span style="width:${Math.round(b.progress * 100)}%"></span></span>
+          <span class="bar" aria-hidden="true" style="margin-top:8px"><span style="width:${Math.round(b.progress * 100)}%"></span></span>
           <p class="muted small">${b.count} van ${b.next}</p>
         </div>` : `<p>Je hebt het hoogste niveau bereikt. Proost!</p>`}
       <div>
         <h3>Alle niveaus</h3>
         <ol class="levels">
-          ${b.thresholds.map((t, i) => `<li class="${i < b.level ? "done" : ""}"><span class="dot" style="background:${TIER_COLORS[i] || TIER_COLORS.at(-1)}"></span>${esc(b.descOf(t))}${b.dates[i] ? ` <span class="muted small">(${fmtDate(b.dates[i])})</span>` : ""}</li>`).join("")}
+          ${b.thresholds.map((t, i) => `<li class="${i < b.level ? "done" : ""}"><span class="dot" style="background:${TIER_COLORS[i] || TIER_COLORS.at(-1)}"></span><span>${esc(b.descOf(t))}${b.dates[i] ? ` <span class="muted small">(${fmtDate(b.dates[i])})</span>` : ""}</span></li>`).join("")}
         </ol>
       </div>
     </div>`);
@@ -1799,28 +2083,46 @@ function earnedSorted(badges) {
   return badges.filter(b => b.level > 0).sort((a, b) => b.earnedAt.localeCompare(a.earnedAt));
 }
 
+async function fetchSocial(id) {
+  try {
+    const [g, r, c] = await Promise.all([
+      sb.from("cheers").select("created_at").eq("user_id", id),
+      sb.from("cheers").select("created_at, checkin:checkins!inner(user_id)").eq("checkin.user_id", id),
+      sb.from("comments").select("created_at").eq("user_id", id),
+    ]);
+    return {
+      cheersGiven: (g.data || []).map(x => x.created_at),
+      cheersReceived: (r.data || []).map(x => x.created_at),
+      comments: (c.data || []).map(x => x.created_at),
+    };
+  } catch { return {}; }
+}
+
 async function renderBadges(userId) {
   setTab("badges");
   const id = userId || state.user.id;
   const own = id === state.user.id;
   view().innerHTML = `<div class="loading">Badges berekenen…</div>`;
-  let profile = state.me, checkins;
+  let profile = state.me, checkins, social;
   try {
     if (!own) ({ data: profile } = await sb.from("profiles").select("*").eq("id", id).maybeSingle());
-    checkins = await fetchCheckins(id);
+    [checkins, social] = await Promise.all([fetchCheckins(id), fetchSocial(id)]);
   } catch (err) {
     view().innerHTML = `<p class="error">Badges konden niet worden geladen: ${esc(err.message)}</p>`;
     return;
   }
-  const badges = computeBadges(checkins);
+  const badges = computeBadges(checkins, social);
   const earned = earnedSorted(badges);
   const levels = earned.reduce((n, b) => n + b.level, 0);
   const almost = badges
-    .filter(b => b.next && b.count > 0)
-    .filter(b => b.group === "general" || b.group === "style" || b.count >= 2)
+    .filter(b => b.next && b.count > 0 && b.progress >= 0.3)
     .sort((a, b) => b.progress - a.progress)
-    .slice(0, 8);
-  const locked = badges.filter(b => b.group === "general" && b.level === 0 && b.count === 0);
+    .slice(0, 9);
+  const almostKeys = new Set(almost.map(b => b.key));
+  const todo = cat => badges
+    .filter(b => b.cat === cat && b.level === 0 && !almostKeys.has(b.key))
+    .filter(b => !["land", "brouwerij"].includes(cat) || b.count > 0)
+    .sort((a, b) => b.progress - a.progress);
 
   view().innerHTML = `
     <div class="stack">
@@ -1832,9 +2134,12 @@ async function renderBadges(userId) {
         </div>
       </div>
       ${earned.length ? `<section class="stack"><h2>Verdiend</h2><div class="badges">${earned.map(b => badgeHtml(b)).join("")}</div></section>`
-        : `<div class="panel empty"><span class="coaster big locked" style="--tier:var(--line);margin:0 auto 12px"><span class="em">🍺</span></span><h2>Nog geen badges</h2><p class="muted">${own ? "Check je eerste bier in en verdien meteen je eerste badge." : "Nog niets verdiend."}</p></div>`}
+        : `<div class="panel empty">${coasterHtml({ level: 0, emoji: "🍺" }, "big")}<h2 style="margin-top:12px">Nog geen badges</h2><p class="muted">${own ? "Check je eerste bier in en verdien meteen je eerste badge." : "Nog niets verdiend."}</p></div>`}
       ${almost.length ? `<section class="stack"><h2>Bijna</h2><div class="badges">${almost.map(b => badgeHtml(b)).join("")}</div></section>` : ""}
-      ${locked.length ? `<section class="stack"><h2>Nog te verdienen</h2><div class="badges">${locked.map(b => badgeHtml(b)).join("")}</div></section>` : ""}
+      ${BADGE_CATS.map(([cat, label]) => {
+        const list = todo(cat);
+        return list.length ? `<section class="stack"><h2>Nog te verdienen: ${label.toLowerCase()}</h2><div class="badges">${list.map(b => badgeHtml(b)).join("")}</div></section>` : "";
+      }).join("")}
     </div>`;
   view().onclick = e => {
     const el = e.target.closest("[data-badge]");
@@ -1855,6 +2160,259 @@ function celebrate(newOnes) {
       <button class="btn" type="button" id="celebrateOk">Proost!</button>
     </div>`);
   $("#celebrateOk").onclick = closeDialog;
+  $("#dlgBody").onclick = e => { const el = e.target.closest("[data-badge]"); if (el) showBadgeDialog(newOnes.find(b => b.key === el.dataset.badge)); };
+}
+
+// ---------------------------------------------------------------------
+// Bierdatabase: bladeren, toevoegen zonder inchecken, aanvullen
+// ---------------------------------------------------------------------
+const DB_PAGE = 30;
+
+async function renderDatabase() {
+  setTab("database");
+  view().innerHTML = `<div class="loading">Database ophalen…</div>`;
+  const [{ data: mine }, { count: total }, { count: withCode }] = await Promise.all([
+    sb.from("checkins").select("beer_id").eq("user_id", state.user.id),
+    sb.from("beers").select("id", { count: "exact", head: true }),
+    sb.from("beers").select("id", { count: "exact", head: true }).not("barcode", "is", null),
+  ]);
+  const myCount = {};
+  for (const r of mine || []) myCount[r.beer_id] = (myCount[r.beer_id] || 0) + 1;
+
+  view().innerHTML = `
+    <div class="stack">
+      <div class="collection-head">
+        <div>
+          <h1>Bierdatabase</h1>
+          <p class="muted">${total ?? 0} bieren, waarvan ${withCode ?? 0} met barcode</p>
+        </div>
+        <a class="btn" href="#database/nieuw">Bier toevoegen</a>
+      </div>
+      <div class="filters">
+        <input class="input search" type="search" id="dbSearch" placeholder="Zoek op bier of brouwerij" aria-label="Zoeken">
+        <select class="input" id="dbFilter" aria-label="Filter">
+          <option value="">Alle bieren</option>
+          <option value="nocode">Zonder barcode</option>
+          <option value="nophoto">Zonder foto</option>
+          <option value="incomplete">Onvolledig</option>
+          <option value="new">Nog niet gedronken</option>
+        </select>
+      </div>
+      <div class="db-list" id="dbList"></div>
+      <button class="btn ghost block" id="dbMore" type="button" hidden>Meer laden</button>
+    </div>`;
+
+  let items = [], seq = 0;
+  const rowHtml = b => `
+    <button type="button" class="db-row" data-dbbeer="${b.id}">
+      ${photoBlock(b.image_path, b.style)}
+      <span class="db-body">
+        <b>${esc(b.name)}</b>
+        <span class="beer-meta">
+          ${b.brewery ? `<span>${esc(b.brewery)}</span>` : ""}
+          ${b.style ? `<span>${esc(b.style)}</span>` : ""}
+          ${b.abv != null ? `<span>${nf(b.abv)}%</span>` : ""}
+        </span>
+        <span class="tags">
+          ${myCount[b.id] ? `<span class="tag on">Jij: ${myCount[b.id]}×</span>` : ""}
+          ${b.barcode ? "" : `<span class="tag">Geen barcode</span>`}
+          ${!b.style || b.abv == null || !b.country ? `<span class="tag">Onvolledig</span>` : ""}
+        </span>
+      </span>
+    </button>`;
+
+  const load = async (append) => {
+    const my = ++seq;
+    const q = $("#dbSearch").value.trim().replace(/[,()%*\\]/g, " ").trim();
+    const filter = $("#dbFilter").value;
+    let query = sb.from("beers").select("*").order("name");
+    if (q) query = query.or(`name.ilike.%${q}%,brewery.ilike.%${q}%`);
+    if (filter === "nocode") query = query.is("barcode", null);
+    if (filter === "nophoto") query = query.is("image_path", null);
+    if (filter === "incomplete") query = query.or("style.is.null,abv.is.null,country.is.null");
+    if (filter === "new" && Object.keys(myCount).length) query = query.not("id", "in", `(${Object.keys(myCount).join(",")})`);
+    const from = append ? items.length : 0;
+    const { data, error } = await query.range(from, from + DB_PAGE - 1);
+    if (my !== seq) return;
+    if (error) { $("#dbList").innerHTML = `<p class="error">Laden lukte niet: ${esc(error.message)}</p>`; return; }
+    items = append ? items.concat(data) : data;
+    $("#dbList").innerHTML = items.length ? items.map(rowHtml).join("") : `<p class="muted">Geen bieren gevonden.${q ? ` <a href="#database/nieuw">Voeg “${esc(q)}” toe</a>.` : ""}</p>`;
+    $("#dbMore").hidden = data.length < DB_PAGE;
+  };
+  let t;
+  $("#dbSearch").oninput = () => { clearTimeout(t); t = setTimeout(() => load(false), 300); };
+  $("#dbFilter").onchange = () => load(false);
+  $("#dbMore").onclick = () => load(true);
+  $("#dbList").onclick = e => {
+    const r = e.target.closest("[data-dbbeer]");
+    if (r) showDbBeer(items.find(b => b.id === r.dataset.dbbeer));
+  };
+  load(false);
+}
+
+function showDbBeer(b) {
+  const fact = (label, v) => v != null && v !== "" ? `<div><dt>${label}</dt><dd>${esc(v)}</dd></div>` : "";
+  openDialog(`
+    <div class="stack">
+      ${photoBlock(b.image_path, b.style, "hero-photo")}
+      <div>
+        <h2>${esc(b.name)}</h2>
+        ${b.brewery ? `<p class="muted">${esc(b.brewery)}</p>` : ""}
+      </div>
+      <dl class="facts">
+        ${fact("Stijl", b.style)}
+        ${fact("Alcohol", b.abv != null ? nf(b.abv) + "%" : null)}
+        ${fact("Bitterheid", b.ibu != null ? b.ibu + " IBU" : null)}
+        ${fact("Land", b.country)}
+        ${fact("Barcode", b.barcode || "Nog geen")}
+      </dl>
+      ${b.description ? `<p>${esc(b.description)}</p>` : ""}
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="dbCheckin" type="button">Inchecken</button>
+        <a class="btn ghost" href="#database/bewerk/${b.id}">${b.barcode && b.style && b.abv != null ? "Gegevens bewerken" : "Gegevens aanvullen"}</a>
+      </div>
+      <div class="panel beer-stats" id="beerStats"><p class="muted small">Kijken wie dit al heeft gedronken…</p></div>
+    </div>`);
+  $("#dbCheckin").onclick = () => { state.draft = { beer: b }; location.hash = "inchecken"; };
+  loadBeerStats(b);
+}
+
+async function renderBeerForm(id) {
+  setTab("database");
+  let beer = {};
+  if (id) {
+    view().innerHTML = `<div class="loading">Bier ophalen…</div>`;
+    const { data } = await sb.from("beers").select("*").eq("id", id).maybeSingle();
+    if (!data) { view().innerHTML = `<p class="error">Dit bier bestaat niet (meer).</p>`; return; }
+    beer = data;
+  }
+  const isNew = !id;
+  let source = "manual", lookedUpImage = null, photoFile = null;
+
+  view().innerHTML = `
+    <form class="stack" id="beerForm" novalidate>
+      <div>
+        <p><a href="#database" class="small">Terug naar de bierdatabase</a></p>
+        <h1>${isNew ? "Bier toevoegen" : "Bier bewerken"}</h1>
+        ${isNew ? `<p class="muted">Het bier komt in de database zonder dat je het incheckt.</p>` : ""}
+      </div>
+
+      <div class="panel stack">
+        <h2>Barcode</h2>
+        ${barcodeToolsHtml()}
+        <div class="type-code">
+          <input class="input" name="barcode" id="formCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode" value="${esc(beer.barcode)}">
+          <button class="btn ghost" type="button" id="formLookup">Opzoeken</button>
+        </div>
+        <p class="muted small" id="lookupMsg">Scan of typ de barcode en kies Opzoeken. Lege velden worden dan aangevuld uit alle bronnen.</p>
+      </div>
+
+      <div class="panel stack">
+        <h2>Gegevens</h2>
+        ${beerFields(beer)}
+      </div>
+
+      <div class="panel stack">
+        <h2>Foto</h2>
+        <div class="photo-pick">
+          <img id="beerPhotoPreview" alt="" ${beer.image_path ? `src="${esc(photoUrl(beer.image_path))}"` : "hidden"}>
+          <label class="btn soft small" style="cursor:pointer">
+            <input type="file" accept="image/*" id="beerPhoto" hidden>
+            ${beer.image_path ? "Andere foto kiezen" : "Foto kiezen"}
+          </label>
+        </div>
+      </div>
+
+      <p class="error" id="beerFormErr" hidden></p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${isNew
+          ? `<button class="btn" type="submit" data-then="db">Opslaan</button><button class="btn soft" type="submit" data-then="checkin">Opslaan en inchecken</button>`
+          : `<button class="btn" type="submit" data-then="db">Wijzigingen opslaan</button>`}
+        ${!isNew && state.me?.is_admin ? `<button class="btn danger" type="button" id="beerDelete">Bier verwijderen</button>` : ""}
+      </div>
+    </form>`;
+
+  const form = $("#beerForm");
+  const msg = $("#lookupMsg");
+
+  const fill = pre => {
+    let n = 0;
+    for (const k of ["name", "brewery", "style", "abv", "ibu", "country", "description"]) {
+      const el = form.elements[k];
+      if (el && !String(el.value).trim() && pre[k] != null && pre[k] !== "") { el.value = pre[k]; n++; }
+    }
+    if (pre.image_path && !beer.image_path && !photoFile) {
+      lookedUpImage = pre.image_path;
+      const img = $("#beerPhotoPreview"); img.src = photoUrl(pre.image_path); img.hidden = false;
+    }
+    if (pre.source) source = pre.source;
+    return n;
+  };
+
+  const onCode = async code => {
+    $("#formCode").value = code;
+    msg.textContent = `Barcode ${code}: opzoeken in alle bronnen…`;
+    const found = await lookupBarcode(code);
+    if (found.beer && found.beer.id !== beer.id) {
+      msg.innerHTML = `Dit bier staat al in de database: <b>${esc(found.beer.name)}</b>. <a href="#database/bewerk/${found.beer.id}">Openen</a>`;
+      return;
+    }
+    if (found.beer) { msg.textContent = "Deze barcode hoort al bij dit bier."; return; }
+    if (found.prefill?.source) {
+      const n = fill(found.prefill);
+      msg.textContent = `Gevonden via ${found.prefill.source}. ${n ? `${n} ${n === 1 ? "veld" : "velden"} aangevuld, controleer ze even.` : "Alle velden waren al ingevuld."}`;
+    } else {
+      msg.textContent = "Deze barcode is in geen enkele bron bekend. Vul de gegevens zelf in, dan kent de app hem voortaan.";
+    }
+  };
+
+  $("#scanBtn").onclick = () => startScan(onCode);
+  bindBarcodePhoto(onCode);
+  $("#formLookup").onclick = () => {
+    const code = cleanBarcode($("#formCode").value);
+    if (!validBarcode(code)) return toast("Deze barcode klopt niet. Controleer de cijfers onder de streepjes.");
+    stopScanner();
+    onCode(code);
+  };
+  $("#formCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#formLookup").click(); } };
+  $("#beerPhoto").onchange = e => {
+    photoFile = e.target.files[0] || null;
+    if (photoFile) { const img = $("#beerPhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
+  };
+
+  const del = $("#beerDelete");
+  if (del) del.onclick = async () => {
+    if (!confirm(`${beer.name} verwijderen uit de database?`)) return;
+    const { data, error } = await sb.from("beers").delete().eq("id", beer.id).select("id");
+    if (error) return toast("Verwijderen lukte niet: " + error.message);
+    if (!data?.length) return toast("Dit bier kan niet worden verwijderd, omdat er al op is ingecheckt.");
+    toast("Bier verwijderd"); location.hash = "database";
+  };
+
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const then = e.submitter?.dataset.then || "db";
+    const err = $("#beerFormErr");
+    const buttons = form.querySelectorAll("button[type=submit]");
+    const fail = m => { err.textContent = m; err.hidden = false; buttons.forEach(b => b.disabled = false); };
+    err.hidden = true; buttons.forEach(b => b.disabled = true);
+    const fields = readBeerFields(new FormData(form));
+    if (!fields.name) return fail("Vul de naam van het bier in.");
+    if (fields.barcode && !validBarcode(fields.barcode)) return fail("Deze barcode klopt niet. Controleer de cijfers, of laat het veld leeg.");
+    try {
+      if (photoFile) fields.image_path = await uploadPhoto(photoFile);
+      else if (lookedUpImage) fields.image_path = lookedUpImage;
+      const { data, error } = isNew
+        ? await sb.from("beers").insert({ ...fields, source }).select().single()
+        : await sb.from("beers").update(fields).eq("id", beer.id).select().single();
+      if (error) return fail(error.code === "23505" ? "Deze barcode hoort al bij een ander bier in de database." : "Opslaan lukte niet: " + error.message);
+      toast(isNew ? `${data.name} toegevoegd aan de database` : "Wijzigingen opgeslagen");
+      if (then === "checkin") { state.draft = { beer: data }; location.hash = "inchecken"; }
+      else location.hash = "database";
+    } catch (ex) {
+      fail("Opslaan lukte niet: " + (ex.message || ex));
+    }
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -2554,6 +3112,9 @@ async function route() {
   if (h === "vrienden") return renderFriends();
   if (h === "activiteit") return renderFeed();
   if (h === "badges") return renderBadges();
+  if (h === "database") return renderDatabase();
+  if (h === "database/nieuw") return renderBeerForm(null);
+  if (h.startsWith("database/bewerk/")) return renderBeerForm(h.slice(16));
   if (h.startsWith("badges/")) return renderBadges(h.slice(7));
   if (h === "profiel") return renderProfile();
   if (h === "beheer") return renderAdmin();
