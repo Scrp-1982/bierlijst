@@ -181,6 +181,9 @@ textarea.input { min-height: 92px; resize: vertical; }
 
 /* Collectie-kop met bierspectrum */
 .collection-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.avatar-edit { display: flex; align-items: center; gap: 18px; }
+.avatar-edit .stack > * + * { margin-top: 8px; }
+.title-with-avatar { display: flex; align-items: center; gap: 14px; }
 .spectrum {
   display: flex; height: 54px; border-radius: 12px; overflow: hidden;
   border: 1px solid var(--line); background: var(--surface);
@@ -289,8 +292,9 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .avatar {
   width: 44px; height: 44px; border-radius: 50%; flex: none;
   display: grid; place-items: center; font: 800 1.1rem var(--display);
-  background: var(--hop-soft); color: var(--ink);
+  background: var(--hop-soft); color: var(--ink); overflow: hidden;
 }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
 .person .grow { flex: 1; min-width: 0; }
 
 .user-row { display: grid; grid-template-columns: 1fr auto; gap: 12px 16px; align-items: center; padding: 16px 0; border-top: 1px solid var(--line); }
@@ -433,6 +437,12 @@ function photoBlock(path, style, cls = "beer-photo") {
   const url = photoUrl(path);
   return `<div class="${cls}" style="--srm:${c.hex}">${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : glassSvg(c.hex)}</div>`;
 }
+function avatarHtml(p, size) {
+  const url = photoUrl(p?.avatar_path);
+  const st = size ? ` style="width:${size}px;height:${size}px;font-size:${Math.round(size / 2.4)}px"` : "";
+  const letter = esc(((p?.display_name || "?").trim()[0] || "?").toUpperCase());
+  return `<span class="avatar"${st}>${url ? `<img src="${esc(url)}" alt="">` : letter}</span>`;
+}
 function stars(r) {
   if (r == null) return `<span class="muted small">Geen score</span>`;
   return `<span class="stars" style="--r:${Number(r)}" aria-label="${nf(r, 2)} van 5">★★★★★</span>`;
@@ -482,15 +492,37 @@ function closeDialog() { $("#dlg").close(); }
 $("#dlgClose").addEventListener("click", closeDialog);
 $("#dlg").addEventListener("click", e => { if (e.target.id === "dlg") closeDialog(); });
 
-// Foto verkleinen tot max 1600px JPEG, zodat de gratis opslag lang meegaat
-async function compressImage(file, max = 1600) {
+// Foto verkleinen: maximaal 250 kB per foto, zodat de gratis opslag lang meegaat
+const MAX_PHOTO_BYTES = 250 * 1024;
+function canvasBlob(canvas, quality) {
+  return new Promise(res => canvas.toBlob(res, "image/jpeg", quality));
+}
+async function compressImage(file) {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const steps = [[1600, 0.82], [1600, 0.72], [1400, 0.7], [1200, 0.68], [1024, 0.65], [900, 0.6], [800, 0.55]];
+  let blob;
+  for (const [max, q] of steps) {
+    const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    blob = await canvasBlob(canvas, q);
+    if (blob.size <= MAX_PHOTO_BYTES) break;
+  }
+  bmp.close?.();
+  if (blob.size > MAX_PHOTO_BYTES) throw new Error("Deze foto kon niet klein genoeg worden gemaakt. Probeer een andere foto.");
+  return blob;
+}
+// Profielfoto: vierkant bijgesneden, 400 x 400 pixels
+async function compressAvatar(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const side = Math.min(bmp.width, bmp.height);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bmp.width * scale);
-  canvas.height = Math.round(bmp.height * scale);
-  canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  return new Promise(res => canvas.toBlob(res, "image/jpeg", 0.82));
+  canvas.width = canvas.height = 400;
+  canvas.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, 400, 400);
+  bmp.close?.();
+  return canvasBlob(canvas, 0.82);
 }
 async function uploadPhoto(file) {
   const blob = await compressImage(file);
@@ -613,9 +645,12 @@ function renderCollection(groups, { title, intro, own, profile }) {
   view().innerHTML = `
     <div class="stack">
       <div class="collection-head">
-        <div>
+        <div class="title-with-avatar">
+          ${profile && !own ? avatarHtml(profile, 56) : ""}
+          <div>
           <h1>${esc(title)}</h1>
           ${intro ? `<p class="muted">${intro}</p>` : ""}
+          </div>
         </div>
         ${own && groups.length ? `<a class="btn" href="#inchecken">Bier inchecken</a>` : ""}
       </div>
@@ -1221,7 +1256,7 @@ async function renderFriends() {
   setTab("vrienden");
   view().innerHTML = `<div class="loading">Vrienden ophalen…</div>`;
   const [{ data: people }, { data: rows }] = await Promise.all([
-    sb.from("profiles").select("id, display_name, username, bio").neq("id", state.user.id).order("display_name"),
+    sb.from("profiles").select("id, display_name, username, bio, avatar_path").neq("id", state.user.id).order("display_name"),
     sb.from("checkins").select("user_id, beer_id"),
   ]);
   const unique = {};
@@ -1234,7 +1269,7 @@ async function renderFriends() {
         <div class="people">
           ${people.map(p => `
             <a class="person" href="#u/${p.id}">
-              <span class="avatar">${initial(p.display_name)}</span>
+              ${avatarHtml(p)}
               <span class="grow"><b>${esc(p.display_name || "Naamloos")}</b><br><span class="muted small">${unique[p.id]?.size || 0} unieke bieren</span></span>
             </a>`).join("")}
         </div>` : `<p class="muted">Hier verschijnen andere gebruikers zodra ze een account hebben.</p>`}
@@ -1255,10 +1290,12 @@ async function renderAdmin() {
   setTab("beheer");
   if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
   view().innerHTML = `<div class="loading">Gebruikers ophalen…</div>`;
-  const [{ data: users, error: uErr }, { data: invites }] = await Promise.all([
+  const [{ data: users, error: uErr }, { data: invites }, { data: profs }] = await Promise.all([
     sb.rpc("admin_list_users"),
     sb.from("invites").select("*").order("created_at", { ascending: false }),
+    sb.from("profiles").select("id, display_name, avatar_path"),
   ]);
+  const profById = Object.fromEntries((profs || []).map(p => [p.id, p]));
   const open = (invites || []).filter(i => !i.accepted_at);
 
   view().innerHTML = `
@@ -1290,7 +1327,7 @@ async function renderAdmin() {
           return `
           <div class="user-row">
             <div class="user-info">
-              <span class="avatar">${initial(u.display_name)}</span>
+              ${avatarHtml(profById[u.id] || u)}
               <div>
                 <b>${esc(u.display_name || "Naamloos")}</b>${me ? ` <span class="muted small">(jij)</span>` : ""}<br>
                 <span class="muted small">${esc(u.email)}</span><br>
@@ -1450,6 +1487,20 @@ function renderProfile() {
   view().innerHTML = `
     <div class="stack">
       <h1>Profiel</h1>
+      <div class="panel avatar-edit">
+        ${avatarHtml(p, 88)}
+        <div class="stack" style="--gap:8px">
+          <b>Profielfoto</b>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label class="btn soft small" style="cursor:pointer">
+              <input type="file" accept="image/*" id="avatarInput" hidden>
+              ${p.avatar_path ? "Andere foto kiezen" : "Foto kiezen"}
+            </label>
+            ${p.avatar_path ? `<button class="btn ghost small" id="avatarRemove" type="button">Verwijderen</button>` : ""}
+          </div>
+        </div>
+      </div>
+
       <form class="panel stack" id="profileForm">
         <label class="field"><span>Naam</span><input class="input" name="display_name" value="${esc(p.display_name)}" required></label>
         <label class="field"><span>Gebruikersnaam</span><input class="input" name="username" value="${esc(p.username)}" placeholder="bijv. mike_bier" pattern="[a-z0-9_]{3,30}" autocapitalize="off"></label>
@@ -1514,6 +1565,34 @@ function renderProfile() {
     catch { $("#pubLink").select(); toast("Selecteer en kopieer de link"); }
   };
   bindPasswordForm(false);
+
+  const oldAvatar = p.avatar_path;
+  const removeOld = async () => {
+    if (oldAvatar && oldAvatar.startsWith(state.user.id + "/")) await sb.storage.from("photos").remove([oldAvatar]);
+  };
+  $("#avatarInput").onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    toast("Foto uploaden…");
+    try {
+      const blob = await compressAvatar(file);
+      const path = `${state.user.id}/avatar-${crypto.randomUUID()}.jpg`;
+      const { error: upErr } = await sb.storage.from("photos").upload(path, blob, { contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+      const { data, error } = await sb.from("profiles").update({ avatar_path: path }).eq("id", state.user.id).select().single();
+      if (error) throw error;
+      await removeOld();
+      state.me = data; toast("Profielfoto opgeslagen"); renderProfile();
+    } catch (ex) { toast("Uploaden lukte niet: " + (ex.message || ex)); }
+  };
+  const rmBtn = $("#avatarRemove");
+  if (rmBtn) rmBtn.onclick = async () => {
+    const { data, error } = await sb.from("profiles").update({ avatar_path: null }).eq("id", state.user.id).select().single();
+    if (error) return toast("Verwijderen lukte niet: " + error.message);
+    await removeOld();
+    state.me = data; toast("Profielfoto verwijderd"); renderProfile();
+  };
+
   $("#csvBtn").onclick = () => exportData("csv");
   $("#jsonBtn").onclick = () => exportData("json");
   $("#logoutBtn").onclick = async () => { await sb.auth.signOut(); };
