@@ -327,11 +327,16 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 
 /* Vrienden */
 .people { display: grid; gap: 8px; }
+section.stack > h2 + * { margin-top: 10px; }
 .person {
   display: flex; align-items: center; gap: 14px; padding: 12px 14px; text-decoration: none; color: inherit;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg);
 }
 .person:hover { border-color: var(--muted); }
+.person-link { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; text-decoration: none; color: inherit; }
+.person-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.people > div[data-name] { display: contents; }
+.people > div[data-name][hidden] { display: none !important; }
 .avatar {
   width: 44px; height: 44px; border-radius: 50%; flex: none;
   display: grid; place-items: center; font: 800 1.1rem var(--display);
@@ -1056,27 +1061,37 @@ function editBeer(b) {
 // ---------------------------------------------------------------------
 // Inchecken
 // ---------------------------------------------------------------------
+function offToPrefill(p, code) {
+  const abv = p.nutriments?.alcohol ?? p.nutriments?.alcohol_100g ?? p.nutriments?.alcohol_value;
+  return {
+    barcode: code || p.code || null,
+    name: p.product_name || p.product_name_nl || p.product_name_en || "",
+    brewery: (p.brands || "").split(",")[0].trim(),
+    abv: abv != null && abv !== "" && !isNaN(Number(abv)) ? Number(abv) : null,
+    country: (p.countries || "").split(",")[0].replace(/^en:/, "").trim(),
+    image_path: p.image_front_url || null,
+    source: "openfoodfacts",
+  };
+}
+async function searchOFF(q) {
+  const url = "https://world.openfoodfacts.org/cgi/search.pl?" + new URLSearchParams({
+    search_terms: q, search_simple: "1", action: "process", json: "1", page_size: "8",
+    tagtype_0: "categories", tag_contains_0: "contains", tag_0: "en:beers",
+    fields: "code,product_name,product_name_nl,product_name_en,brands,nutriments,countries,image_front_url",
+  });
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("Open Food Facts reageert niet");
+  const j = await r.json();
+  return (j.products || []).filter(p => p.product_name || p.product_name_nl || p.product_name_en);
+}
+
 async function lookupBarcode(code) {
   const { data } = await sb.from("beers").select("*").eq("barcode", code).maybeSingle();
   if (data) return { beer: data };
   try {
     const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=product_name,brands,nutriments,countries,image_front_url`);
     const j = await r.json();
-    if (j.status === 1 && j.product) {
-      const p = j.product;
-      const abv = p.nutriments?.alcohol ?? p.nutriments?.alcohol_100g ?? p.nutriments?.alcohol_value;
-      return {
-        prefill: {
-          barcode: code,
-          name: p.product_name || "",
-          brewery: (p.brands || "").split(",")[0].trim(),
-          abv: abv != null && abv !== "" ? Number(abv) : null,
-          country: (p.countries || "").split(",")[0].replace(/^en:/, "").trim(),
-          image_path: p.image_front_url || null,
-          source: "openfoodfacts",
-        },
-      };
-    }
+    if (j.status === 1 && j.product) return { prefill: offToPrefill(j.product, code) };
   } catch { /* geen verbinding met Open Food Facts: gewoon handmatig invullen */ }
   return { prefill: { barcode: code } };
 }
@@ -1102,7 +1117,12 @@ function renderCheckin() {
         Barcode scannen
       </button>
       <div id="reader" hidden></div>
-      <p class="muted small" id="scanMsg" hidden></p>
+      <div id="readerFile" hidden></div>
+      <p class="small" id="scanMsg" hidden></p>
+      <label class="btn soft block" style="cursor:pointer">
+        <input type="file" accept="image/*" capture="environment" id="barcodePhoto" hidden>
+        Foto van de barcode maken
+      </label>
       <div class="or">of</div>
       <label class="field"><span>Zoek een bier</span><input class="input" id="beerSearch" type="search" placeholder="Naam of brouwerij" autocomplete="off"></label>
       <div class="results" id="results"></div>
@@ -1169,26 +1189,58 @@ function renderCheckin() {
 
   if (!d) {
     $("#scanBtn").onclick = startScan;
+    $("#barcodePhoto").onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (typeof Html5Qrcode === "undefined") return toast("De scanner kon niet worden geladen. Ververs de pagina.");
+      const msg = $("#scanMsg");
+      msg.hidden = false; msg.textContent = "Barcode zoeken in de foto…";
+      await stopScanner();
+      const F = Html5QrcodeSupportedFormats;
+      const reader = new Html5Qrcode("readerFile", { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose: false });
+      try {
+        const code = await reader.scanFile(file, false);
+        await handleBarcode(code);
+      } catch {
+        msg.textContent = "Geen barcode gevonden in de foto. Zorg dat de barcode scherp, recht en goed belicht in beeld is, en probeer het opnieuw.";
+      } finally {
+        try { reader.clear(); } catch {}
+        e.target.value = "";
+      }
+    };
     $("#newBtn").onclick = () => { stopScanner(); state.draft = { prefill: { name: $("#beerSearch").value.trim() } }; renderCheckin(); };
-    let timer;
+    let timer, seq = 0;
     $("#beerSearch").oninput = e => {
       clearTimeout(timer);
-      const q = e.target.value.trim().replace(/[,()%*\\]/g, " ");
+      const q = e.target.value.trim().replace(/[,()%*\\]/g, " ").trim();
       if (q.length < 2) { $("#results").innerHTML = ""; return; }
       timer = setTimeout(async () => {
-        const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8);
-        $("#results").innerHTML = (data || []).map(b => `
-          <button type="button" class="result" data-id="${b.id}">
-            <span><b>${esc(b.name)}</b><br><span class="muted small">${esc([b.brewery, b.style].filter(Boolean).join(", "))}</span></span>
+        const my = ++seq;
+        $("#results").innerHTML = `<p class="muted small">Zoeken…</p>`;
+        const [own, off] = await Promise.all([
+          sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8).then(r => r.data || []),
+          q.length >= 3 ? searchOFF(q).catch(() => null) : Promise.resolve([]),
+        ]);
+        if (my !== seq) return;
+        const known = new Set(own.map(b => b.barcode).filter(Boolean));
+        const ext = (off || []).filter(p => !known.has(p.code));
+        const item = (attrs, title, sub) => `
+          <button type="button" class="result" ${attrs}>
+            <span><b>${esc(title)}</b><br><span class="muted small">${esc(sub)}</span></span>
             <span class="muted small">Kies</span>
-          </button>`).join("") || `<p class="muted small">Niet gevonden. Voeg het toe als nieuw bier.</p>`;
+          </button>`;
+        $("#results").innerHTML =
+          (own.length ? `<p class="small muted">In jullie lijst</p>` + own.map(b => item(`data-id="${b.id}"`, b.name, [b.brewery, b.style].filter(Boolean).join(", "))).join("") : "") +
+          (ext.length ? `<p class="small muted" style="margin-top:6px">Uit Open Food Facts</p>` + ext.map((p, i) => item(`data-off="${i}"`, p.product_name || p.product_name_nl || p.product_name_en, (p.brands || "").split(",")[0])).join("") : "") +
+          (!own.length && !ext.length ? `<p class="muted small">${off === null ? "Open Food Facts is nu niet bereikbaar. " : ""}Niets gevonden. Voeg het toe als nieuw bier.</p>` : "");
         $("#results").onclick = ev => {
-          const r = ev.target.closest("[data-id]");
+          const r = ev.target.closest("[data-id], [data-off]");
           if (!r) return;
-          state.draft = { beer: data.find(x => x.id === r.dataset.id) };
+          stopScanner();
+          state.draft = r.dataset.id ? { beer: own.find(x => x.id === r.dataset.id) } : { prefill: offToPrefill(ext[Number(r.dataset.off)]) };
           renderCheckin();
         };
-      }, 250);
+      }, 400);
     };
     return;
   }
@@ -1277,8 +1329,21 @@ function renderCheckin() {
   };
 }
 
+async function handleBarcode(code) {
+  const msg = $("#scanMsg");
+  if (msg) { msg.hidden = false; msg.textContent = `Barcode ${code} gevonden. Gegevens opzoeken…`; }
+  const found = await lookupBarcode(code);
+  state.draft = found.beer ? { beer: found.beer } : { prefill: found.prefill };
+  renderCheckin();
+}
+
 async function startScan() {
   const reader = $("#reader"), msg = $("#scanMsg"), btn = $("#scanBtn");
+  if (typeof Html5Qrcode === "undefined") {
+    msg.hidden = false;
+    msg.textContent = "De scanner kon niet worden geladen. Controleer je internetverbinding en ververs de pagina.";
+    return;
+  }
   if (state.scanner) { await stopScanner(); reader.hidden = true; btn.lastChild.textContent = " Barcode scannen"; return; }
   reader.hidden = false; msg.hidden = false;
   msg.textContent = "Richt de camera op de barcode van het flesje of blikje.";
@@ -1296,17 +1361,20 @@ async function startScan() {
       async code => {
         await stopScanner();
         if (navigator.vibrate) navigator.vibrate(60);
-        msg.textContent = `Barcode ${code} gevonden. Gegevens opzoeken…`;
-        const found = await lookupBarcode(code);
-        state.draft = found.beer ? { beer: found.beer } : { prefill: found.prefill };
-        renderCheckin();
+        await handleBarcode(code);
       }
     );
   } catch (ex) {
     await stopScanner();
     reader.hidden = true;
     btn.lastChild.textContent = " Barcode scannen";
-    msg.textContent = "De camera kon niet worden gestart. Geef de browser toestemming voor de camera, of zoek het bier op naam.";
+    const t = String(ex?.name || ex?.message || ex);
+    msg.textContent =
+      !window.isSecureContext ? "De camera werkt alleen via een https-adres. Open de app via https://." :
+      /NotAllowed|Permission/i.test(t) ? "De browser heeft geen toestemming voor de camera. Sta de camera toe in de instellingen van je browser, of gebruik de knop 'Foto van de barcode maken'." :
+      /NotFound|DevicesNotFound|no camera/i.test(t) ? "Er is geen camera gevonden op dit apparaat. Gebruik een telefoon, of zoek het bier op naam." :
+      /NotReadable|TrackStart|in use/i.test(t) ? "De camera is in gebruik door een andere app. Sluit die app en probeer het opnieuw." :
+      `De camera kon niet worden gestart (${t}). Gebruik de knop 'Foto van de barcode maken', of zoek het bier op naam.`;
   }
 }
 
@@ -1314,7 +1382,7 @@ async function startScan() {
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
-const feedState = { items: [], done: false };
+const feedState = { items: [], done: false, ids: [] };
 
 function relTime(iso) {
   const rtf = new Intl.RelativeTimeFormat("nl", { numeric: "auto" });
@@ -1328,6 +1396,7 @@ async function fetchFeed(from) {
   const { data, error } = await sb
     .from("checkins")
     .select("*, beer:beers(*), profile:profiles(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles(id, display_name, avatar_path)), cheers(user_id, profile:profiles(id, display_name))")
+    .in("user_id", feedState.ids)
     .order("created_at", { ascending: false })
     .order("created_at", { referencedTable: "comments", ascending: true })
     .range(from, from + FEED_PAGE - 1);
@@ -1401,6 +1470,7 @@ async function renderFeed() {
   setTab("activiteit");
   view().innerHTML = `<div class="loading">Activiteit ophalen…</div>`;
   try {
+    feedState.ids = [state.user.id, ...(await friendIds())];
     feedState.items = await fetchFeed(0);
     feedState.done = feedState.items.length < FEED_PAGE;
   } catch (err) {
@@ -1410,9 +1480,10 @@ async function renderFeed() {
   view().innerHTML = `
     <div class="stack">
       <h1>Activiteit</h1>
+      <p class="muted">Jij en ${feedState.ids.length - 1} ${feedState.ids.length - 1 === 1 ? "vriend" : "vrienden"}</p>
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
         <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
-      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">Zodra iemand een bier incheckt, zie je het hier.</p><p style="margin-top:16px"><a class="btn" href="#inchecken">Bier inchecken</a></p></div>`}
+      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden.</p><p style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="#inchecken">Bier inchecken</a><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
     </div>`;
 
   const more = $("#moreBtn");
@@ -1503,29 +1574,120 @@ async function renderFeed() {
 // ---------------------------------------------------------------------
 const initial = n => esc((n || "?").trim()[0]?.toUpperCase() || "?");
 
+async function fetchFriendships() {
+  const { data, error } = await sb
+    .from("friendships")
+    .select("*, req:profiles!friendships_requester_fkey(id, display_name, avatar_path), adr:profiles!friendships_addressee_fkey(id, display_name, avatar_path)");
+  if (error) throw error;
+  return data || [];
+}
+async function friendIds() {
+  try {
+    const rows = await fetchFriendships();
+    return rows.filter(r => r.status === "accepted").map(r => r.requester === state.user.id ? r.addressee : r.requester);
+  } catch { return []; }
+}
+
 async function renderFriends() {
   setTab("vrienden");
   view().innerHTML = `<div class="loading">Vrienden ophalen…</div>`;
-  const [{ data: people }, { data: rows }] = await Promise.all([
-    sb.from("profiles").select("id, display_name, username, bio, avatar_path").neq("id", state.user.id).order("display_name"),
-    sb.from("checkins").select("user_id, beer_id"),
-  ]);
-  const unique = {};
-  for (const r of rows || []) (unique[r.user_id] ||= new Set()).add(r.beer_id);
+  let rows, people, counts;
+  try {
+    const [fr, { data: ppl }, { data: cks }] = await Promise.all([
+      fetchFriendships(),
+      sb.from("profiles").select("id, display_name, avatar_path").neq("id", state.user.id).order("display_name"),
+      sb.from("checkins").select("user_id, beer_id"),
+    ]);
+    rows = fr; people = ppl || [];
+    counts = {};
+    for (const r of cks || []) (counts[r.user_id] ||= new Set()).add(r.beer_id);
+  } catch (err) {
+    view().innerHTML = `<p class="error">Vrienden konden niet worden geladen: ${esc(err.message)}</p>`;
+    return;
+  }
+  const me = state.user.id;
+  const relation = {};
+  for (const r of rows) {
+    const other = r.requester === me ? r.addressee : r.requester;
+    relation[other] = r.status === "accepted" ? "friend" : (r.requester === me ? "sent" : "received");
+  }
+  const byRel = rel => people.filter(p => relation[p.id] === rel);
+  const friends = byRel("friend"), received = byRel("received"), sent = byRel("sent");
+  const others = people.filter(p => !relation[p.id]);
+  const uniq = id => `${counts[id]?.size || 0} unieke bieren`;
+
+  const row = (p, actions, link) => `
+    <div class="person">
+      ${link ? `<a href="#u/${p.id}" class="person-link">` : `<span class="person-link">`}
+        ${avatarHtml(p)}
+        <span class="grow"><b>${esc(p.display_name || "Naamloos")}</b><br><span class="muted small">${uniq(p.id)}</span></span>
+      ${link ? `</a>` : `</span>`}
+      <span class="person-actions">${actions}</span>
+    </div>`;
 
   view().innerHTML = `
     <div class="stack">
       <h1>Vrienden</h1>
-      ${people && people.length ? `
-        <div class="people">
-          ${people.map(p => `
-            <a class="person" href="#u/${p.id}">
-              ${avatarHtml(p)}
-              <span class="grow"><b>${esc(p.display_name || "Naamloos")}</b><br><span class="muted small">${unique[p.id]?.size || 0} unieke bieren</span></span>
-            </a>`).join("")}
-        </div>` : `<p class="muted">Hier verschijnen andere gebruikers zodra ze een account hebben.</p>`}
-      ${state.me?.is_admin ? `<a class="btn ghost" href="#beheer">Iemand uitnodigen</a>` : ""}
+
+      ${received.length ? `
+        <section class="stack">
+          <h2>Vriendschapsverzoeken</h2>
+          <div class="people">${received.map(p => row(p, `
+            <button class="btn small" data-accept="${p.id}">Accepteren</button>
+            <button class="btn ghost small" data-remove="${p.id}" data-confirm="Verzoek van ${esc(p.display_name)} afwijzen?">Afwijzen</button>`)).join("")}</div>
+        </section>` : ""}
+
+      <section class="stack">
+        <h2>Je vrienden</h2>
+        ${friends.length
+          ? `<div class="people">${friends.map(p => row(p, `<button class="btn ghost small" data-remove="${p.id}" data-confirm="${esc(p.display_name)} verwijderen als vriend?">Verwijderen</button>`, true)).join("")}</div>`
+          : `<p class="muted">Je hebt nog geen vrienden. Stuur hieronder een verzoek aan een ander lid. In Activiteit zie je alleen je eigen check-ins en die van je vrienden.</p>`}
+      </section>
+
+      ${sent.length ? `
+        <section class="stack">
+          <h2>Verstuurde verzoeken</h2>
+          <div class="people">${sent.map(p => row(p, `<button class="btn ghost small" data-remove="${p.id}">Intrekken</button>`)).join("")}</div>
+        </section>` : ""}
+
+      <section class="stack">
+        <h2>Andere leden</h2>
+        ${others.length ? `
+          <input class="input" type="search" id="memberFilter" placeholder="Zoek een lid op naam" aria-label="Lid zoeken">
+          <div class="people" id="memberList">${others.map(p => `<div data-name="${esc((p.display_name || "").toLowerCase())}">${row(p, `<button class="btn soft small" data-request="${p.id}">Vriend toevoegen</button>`)}</div>`).join("")}</div>`
+        : `<p class="muted">Er zijn geen andere leden die je nog kunt toevoegen.</p>`}
+      </section>
     </div>`;
+
+  const filter = $("#memberFilter");
+  if (filter) filter.oninput = () => {
+    const q = filter.value.trim().toLowerCase();
+    document.querySelectorAll("#memberList > [data-name]").forEach(el => el.hidden = q && !el.dataset.name.includes(q));
+  };
+
+  view().onclick = async e => {
+    const btn = e.target.closest("[data-request], [data-accept], [data-remove]");
+    if (!btn) return;
+    if (btn.dataset.confirm && !confirm(btn.dataset.confirm)) return;
+    btn.disabled = true;
+    let error;
+    if (btn.dataset.request) {
+      ({ error } = await sb.from("friendships").insert({ addressee: btn.dataset.request }));
+      if (error?.code === "23505") error = { message: "Er loopt al een verzoek tussen jullie. Ververs de pagina." };
+      if (!error) toast("Vriendschapsverzoek verstuurd");
+    } else if (btn.dataset.accept) {
+      ({ error } = await sb.from("friendships").update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("requester", btn.dataset.accept).eq("addressee", me));
+      if (!error) toast("Jullie zijn nu vrienden. Proost!");
+    } else {
+      const other = btn.dataset.remove;
+      ({ error } = await sb.from("friendships").delete()
+        .or(`and(requester.eq.${me},addressee.eq.${other}),and(requester.eq.${other},addressee.eq.${me})`));
+      if (!error) toast("Bijgewerkt");
+    }
+    if (error) { btn.disabled = false; return toast("Dat lukte niet: " + error.message); }
+    renderFriends();
+  };
 }
 
 // ---------------------------------------------------------------------
