@@ -50,6 +50,7 @@
   }
 }
 *, *::before, *::after { box-sizing: inherit; }
+[hidden] { display: none !important; }
 html { scroll-padding-top: env(safe-area-inset-top, 0px); }
 body {
   margin: 0;
@@ -282,6 +283,48 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .checkin-item img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
 .who { font-weight: 700; }
 
+/* Activiteit */
+.feed { display: grid; gap: 14px; }
+.post { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px; }
+.post-head { display: flex; gap: 12px; align-items: flex-start; }
+.post-head > div { min-width: 0; flex: 1; }
+.post-title { line-height: 1.35; overflow-wrap: anywhere; }
+.post-title .beername { font-family: var(--display); font-weight: 700; }
+.post-meta { font-size: 0.88rem; color: var(--muted); }
+.post-rating { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.post-rating b { font-family: var(--display); }
+.post-notes { margin-top: 8px; overflow-wrap: anywhere; }
+.post-photo { margin-top: 12px; border-radius: 14px; overflow: hidden; background: var(--paper); }
+.post-photo img { width: 100%; max-height: 420px; object-fit: cover; }
+.comments { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.comment { display: flex; gap: 10px; align-items: flex-start; }
+.comment .avatar { width: 30px; height: 30px; font-size: 0.85rem; }
+.comment-body { flex: 1; min-width: 0; background: var(--paper); border-radius: 14px; padding: 8px 12px; overflow-wrap: anywhere; }
+.comment-body .post-meta { font-size: 0.8rem; }
+.comment-del { appearance: none; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 0.82rem; padding: 4px; text-decoration: underline; }
+.comment-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.comment-form textarea { min-height: 44px; height: 44px; resize: none; padding: 10px 12px; }
+.comment-form textarea:focus { height: 84px; }
+.char-count, .field > .char-count { display: block; text-align: right; font-size: 0.78rem; color: var(--muted); margin-top: 3px; font-weight: 400; }
+.char-count.full { color: var(--danger); }
+.comment-form .char-count { grid-column: 1 / -1; margin-top: -4px; }
+.emoji-row { grid-column: 1 / -1; display: none; grid-template-columns: repeat(8, minmax(0, 44px)); gap: 4px; }
+.comment-form:focus-within .emoji-row { display: grid; }
+.emoji-row button { appearance: none; border: 0; background: var(--paper); border-radius: 10px; height: 36px; font-size: 1.15rem; cursor: pointer; padding: 0; }
+.emoji-row button:hover { background: var(--hop-soft); }
+.post-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.cheer-btn {
+  appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 38px; padding: 0 16px; border-radius: 999px; font-weight: 700;
+  border: 1.5px solid var(--line); background: transparent; color: var(--ink);
+}
+.cheer-btn.on { background: var(--gold); border-color: var(--gold); color: #2A1E05; }
+.cheer-btn:disabled { cursor: progress; opacity: .6; }
+@media (prefers-reduced-motion: no-preference) {
+  .cheer-btn.pop { animation: pop .35s ease-out; }
+  @keyframes pop { 40% { transform: scale(1.15) rotate(-6deg); } }
+}
+
 /* Vrienden */
 .people { display: grid; gap: 8px; }
 .person {
@@ -354,6 +397,7 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 <div class="backdrop" id="backdrop"></div>
 <nav class="drawer" id="drawer" aria-label="Hoofdmenu">
   <a href="#lijst" data-tab="lijst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>Mijn bieren</a>
+  <a href="#activiteit" data-tab="activiteit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Activiteit</a>
   <a href="#inchecken" data-tab="inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Inchecken</a>
   <a href="#vrienden" data-tab="vrienden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg>Vrienden</a>
   <a href="#profiel" data-tab="profiel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>Profiel</a>
@@ -437,6 +481,25 @@ function photoBlock(path, style, cls = "beer-photo") {
   const url = photoUrl(path);
   return `<div class="${cls}" style="--srm:${c.hex}">${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : glassSvg(c.hex)}</div>`;
 }
+// Tekens tellen zoals mensen ze zien: één emoji is één teken
+const segmenter = typeof Intl.Segmenter === "function" ? new Intl.Segmenter("nl", { granularity: "grapheme" }) : null;
+function charList(str) { return segmenter ? [...segmenter.segment(str)].map(x => x.segment) : [...str]; }
+function charCount(str) { return charList(str || "").length; }
+function clampChars(str, n) { const l = charList(str || ""); return l.length > n ? l.slice(0, n).join("") : str; }
+function limitedTextarea(name, limit, value = "", attrs = "") {
+  return `<textarea class="input" name="${name}" data-limit="${limit}" ${attrs}>${esc(value)}</textarea>
+    <span class="char-count">${charCount(value)} / ${limit}</span>`;
+}
+document.addEventListener("input", e => {
+  const ta = e.target.closest("textarea[data-limit]");
+  if (!ta) return;
+  const limit = Number(ta.dataset.limit);
+  if (charCount(ta.value) > limit) ta.value = clampChars(ta.value, limit);
+  const n = charCount(ta.value);
+  const cnt = ta.parentElement.querySelector(".char-count");
+  if (cnt) { cnt.textContent = `${n} / ${limit}`; cnt.classList.toggle("full", n >= limit); }
+});
+
 function avatarHtml(p, size) {
   const url = photoUrl(p?.avatar_path);
   const st = size ? ` style="width:${size}px;height:${size}px;font-size:${Math.round(size / 2.4)}px"` : "";
@@ -889,7 +952,7 @@ function editCheckin(c, beer) {
       </div>
       <label class="field"><span>Locatie</span><input class="input" name="location_name" value="${esc(c.location_name)}"></label>
       <label class="field"><span>Wanneer</span><input class="input" type="datetime-local" name="drunk_at" value="${toLocalInput(c.drunk_at)}"></label>
-      <label class="field"><span>Notities</span><textarea class="input" name="notes">${esc(c.notes)}</textarea></label>
+      <label class="field"><span>Notities</span>${limitedTextarea("notes", 300, c.notes || "")}</label>
       <div>
         <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Foto</span>
         <div class="photo-pick">
@@ -921,7 +984,7 @@ function editCheckin(c, beer) {
         serving: f.get("serving") || null,
         location_name: String(f.get("location_name") || "").trim() || null,
         drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : c.drunk_at,
-        notes: String(f.get("notes") || "").trim() || null,
+        notes: clampChars(String(f.get("notes") || "").trim(), 300) || null,
       };
       if (photoFile) {
         btn.textContent = "Foto uploaden…";
@@ -1088,7 +1151,7 @@ function renderCheckin() {
           <input type="hidden" name="latitude" id="lat"><input type="hidden" name="longitude" id="lon">
         </div>
         <label class="field"><span>Wanneer</span><input class="input" type="datetime-local" name="drunk_at" value="${now}"></label>
-        <label class="field"><span>Notities</span><textarea class="input" name="notes" placeholder="Smaak, geur, met wie…"></textarea></label>
+        <label class="field"><span>Notities</span>${limitedTextarea("notes", 300, "", 'placeholder="Smaak, geur, met wie…"')}</label>
         <div>
           <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Foto</span>
           <div class="photo-pick">
@@ -1199,7 +1262,7 @@ function renderCheckin() {
         latitude: lat ? Number(lat) : null,
         longitude: lon ? Number(lon) : null,
         drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : new Date().toISOString(),
-        notes: String(f.get("notes") || "").trim() || null,
+        notes: clampChars(String(f.get("notes") || "").trim(), 300) || null,
         photo_path,
       });
       if (error) throw error;
@@ -1245,6 +1308,194 @@ async function startScan() {
     btn.lastChild.textContent = " Barcode scannen";
     msg.textContent = "De camera kon niet worden gestart. Geef de browser toestemming voor de camera, of zoek het bier op naam.";
   }
+}
+
+// ---------------------------------------------------------------------
+// Activiteit: alle check-ins met reacties
+// ---------------------------------------------------------------------
+const FEED_PAGE = 20;
+const feedState = { items: [], done: false };
+
+function relTime(iso) {
+  const rtf = new Intl.RelativeTimeFormat("nl", { numeric: "auto" });
+  const sec = (new Date(iso) - Date.now()) / 1000;
+  const units = [["year", 31536000], ["month", 2592000], ["week", 604800], ["day", 86400], ["hour", 3600], ["minute", 60]];
+  for (const [u, n] of units) if (Math.abs(sec) >= n) return rtf.format(Math.round(sec / n), u);
+  return "zojuist";
+}
+
+async function fetchFeed(from) {
+  const { data, error } = await sb
+    .from("checkins")
+    .select("*, beer:beers(*), profile:profiles(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles(id, display_name, avatar_path)), cheers(user_id, profile:profiles(id, display_name))")
+    .order("created_at", { ascending: false })
+    .order("created_at", { referencedTable: "comments", ascending: true })
+    .range(from, from + FEED_PAGE - 1);
+  if (error) throw error;
+  return data;
+}
+
+function postHtml(c) {
+  const mine = c.user_id === state.user.id;
+  const b = c.beer || {};
+  const canDel = cm => cm.user_id === state.user.id || mine || state.me?.is_admin;
+  return `
+    <article class="post" data-post="${c.id}">
+      <div class="post-head">
+        ${avatarHtml(c.profile, 44)}
+        <div>
+          <p class="post-title"><b>${esc(c.profile?.display_name || "Iemand")}</b> dronk <a href="#" class="beername" data-open="${c.id}">${esc(b.name || "een bier")}</a></p>
+          <p class="post-meta">${esc([b.brewery, b.style].filter(Boolean).join(", "))}</p>
+          <p class="post-meta">${relTime(c.drunk_at)}${c.location_name ? `, ${esc(c.location_name)}` : ""}${c.serving ? `, ${esc(c.serving)}` : ""}</p>
+        </div>
+      </div>
+      ${c.rating != null ? `<div class="post-rating">${stars(c.rating)}<b>${nf(c.rating, 2)}</b></div>` : ""}
+      ${c.notes ? `<p class="post-notes">${esc(c.notes)}</p>` : ""}
+      ${c.photo_path ? `<div class="post-photo"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto van ${esc(b.name || "het bier")}" loading="lazy"></div>` : ""}
+      ${cheerHtml(c, mine)}
+      <div class="comments">
+        ${(c.comments || []).map(cm => `
+          <div class="comment">
+            ${avatarHtml(cm.profile)}
+            <div class="comment-body">
+              <b>${esc(cm.profile?.display_name || "Iemand")}</b> <span class="post-meta">${relTime(cm.created_at)}</span>
+              <p>${esc(cm.body)}</p>
+            </div>
+            ${canDel(cm) ? `<button class="comment-del" type="button" data-delcomment="${cm.id}" aria-label="Reactie verwijderen">Verwijderen</button>` : ""}
+          </div>`).join("")}
+        <form class="comment-form" data-commentform="${c.id}">
+          <textarea class="input" name="body" data-limit="50" placeholder="Reageer…" aria-label="Reactie" rows="1"></textarea>
+          <button class="btn small" type="submit">Plaatsen</button>
+          <span class="char-count">0 / 50</span>
+          <div class="emoji-row">${["🍺", "🍻", "👍", "😋", "🔥", "😍", "👌", "🤢"].map(em => `<button type="button" data-emoji="${em}" aria-label="${em} invoegen">${em}</button>`).join("")}</div>
+        </form>
+      </div>
+    </article>`;
+}
+
+function cheerHtml(c, mine) {
+  const list = c.cheers || [];
+  const iCheered = list.some(x => x.user_id === state.user.id);
+  const names = list
+    .sort((a, b) => (b.user_id === state.user.id) - (a.user_id === state.user.id))
+    .map(x => x.user_id === state.user.id ? "Jij" : (x.profile?.display_name || "Iemand"));
+  let who = "";
+  if (names.length === 1) who = names[0] === "Jij" ? "Jij proost mee" : `${names[0]} proost mee`;
+  else if (names.length === 2) who = `${names[0]} en ${names[1]} proosten mee`;
+  else if (names.length > 2) who = `${names[0]}, ${names[1]} en ${names.length - 2} ${names.length - 2 === 1 ? "ander" : "anderen"} proosten mee`;
+  if (mine && !list.length) return "";
+  return `
+    <div class="post-actions">
+      ${mine ? "" : `<button type="button" class="cheer-btn ${iCheered ? "on" : ""}" data-cheer="${c.id}" aria-pressed="${iCheered}">🍻 Proost</button>`}
+      ${who ? `<span class="post-meta">${esc(who)}</span>` : ""}
+    </div>`;
+}
+
+function rerenderPost(id) {
+  const c = feedState.items.find(x => x.id === id);
+  const el = document.querySelector(`[data-post="${id}"]`);
+  if (c && el) el.outerHTML = postHtml(c);
+}
+
+async function renderFeed() {
+  setTab("activiteit");
+  view().innerHTML = `<div class="loading">Activiteit ophalen…</div>`;
+  try {
+    feedState.items = await fetchFeed(0);
+    feedState.done = feedState.items.length < FEED_PAGE;
+  } catch (err) {
+    view().innerHTML = `<p class="error">Activiteit kon niet worden geladen: ${esc(err.message)}</p>`;
+    return;
+  }
+  view().innerHTML = `
+    <div class="stack">
+      <h1>Activiteit</h1>
+      ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
+        <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
+      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">Zodra iemand een bier incheckt, zie je het hier.</p><p style="margin-top:16px"><a class="btn" href="#inchecken">Bier inchecken</a></p></div>`}
+    </div>`;
+
+  const more = $("#moreBtn");
+  if (more) more.onclick = async () => {
+    more.disabled = true;
+    try {
+      const next = await fetchFeed(feedState.items.length);
+      feedState.items.push(...next);
+      feedState.done = next.length < FEED_PAGE;
+      $("#feed").insertAdjacentHTML("beforeend", next.map(postHtml).join(""));
+    } catch (err) { toast("Laden lukte niet: " + err.message); }
+    more.disabled = false;
+    more.hidden = feedState.done;
+  };
+
+  // Emoji-knop: textarea houdt de focus, emoji komt op de cursorpositie
+  view().onpointerdown = e => { if (e.target.closest("[data-emoji]")) e.preventDefault(); };
+
+  view().onsubmit = async e => {
+    const form = e.target.closest("[data-commentform]");
+    if (!form) return;
+    e.preventDefault();
+    const body = clampChars(form.body.value.trim(), 50);
+    if (!body) return;
+    const btn = form.querySelector("button");
+    btn.disabled = true;
+    const { data, error } = await sb
+      .from("comments")
+      .insert({ checkin_id: form.dataset.commentform, body })
+      .select("id, body, created_at, user_id, profile:profiles(id, display_name, avatar_path)")
+      .single();
+    if (error) { btn.disabled = false; return toast("Plaatsen lukte niet: " + error.message); }
+    const c = feedState.items.find(x => x.id === form.dataset.commentform);
+    (c.comments ||= []).push(data);
+    rerenderPost(c.id);
+  };
+
+  view().onclick = async e => {
+    const em = e.target.closest("[data-emoji]");
+    if (em) {
+      const ta = em.closest("form").body;
+      const start = ta.selectionStart ?? ta.value.length, end = ta.selectionEnd ?? ta.value.length;
+      const next = ta.value.slice(0, start) + em.dataset.emoji + ta.value.slice(end);
+      if (charCount(next) > 50) return toast("Maximaal 50 tekens.");
+      ta.value = next;
+      const pos = start + em.dataset.emoji.length;
+      ta.focus(); ta.setSelectionRange(pos, pos);
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    const ch = e.target.closest("[data-cheer]");
+    if (ch) {
+      const c = feedState.items.find(x => x.id === ch.dataset.cheer);
+      const on = (c.cheers || []).some(x => x.user_id === state.user.id);
+      ch.disabled = true;
+      const { error } = on
+        ? await sb.from("cheers").delete().eq("checkin_id", c.id).eq("user_id", state.user.id)
+        : await sb.from("cheers").insert({ checkin_id: c.id });
+      if (error) { ch.disabled = false; return toast("Proosten lukte niet: " + error.message); }
+      c.cheers = on
+        ? c.cheers.filter(x => x.user_id !== state.user.id)
+        : [...(c.cheers || []), { user_id: state.user.id, profile: { display_name: state.me?.display_name } }];
+      rerenderPost(c.id);
+      if (!on) document.querySelector(`[data-cheer="${c.id}"]`)?.classList.add("pop");
+      return;
+    }
+    const open = e.target.closest("[data-open]");
+    if (open) {
+      e.preventDefault();
+      const c = feedState.items.find(x => x.id === open.dataset.open);
+      if (c?.beer) showBeer({ beer: c.beer, checkins: [c], avg: c.rating, photo: c.photo_path || c.beer.image_path }, { own: c.user_id === state.user.id });
+      return;
+    }
+    const del = e.target.closest("[data-delcomment]");
+    if (del) {
+      if (!confirm("Deze reactie verwijderen?")) return;
+      const { error } = await sb.from("comments").delete().eq("id", del.dataset.delcomment);
+      if (error) return toast("Verwijderen lukte niet: " + error.message);
+      const post = feedState.items.find(x => (x.comments || []).some(cm => cm.id === del.dataset.delcomment));
+      post.comments = post.comments.filter(cm => cm.id !== del.dataset.delcomment);
+      rerenderPost(post.id);
+    }
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -1648,6 +1899,8 @@ const publicUser = params.get("u");
 async function route() {
   view().onclick = null;
   view().onchange = null;
+  view().onsubmit = null;
+  view().onpointerdown = null;
   if (location.hash !== "#inchecken") stopScanner();
   if (publicUser && (!location.hash || location.hash === "#")) return renderPublic(publicUser);
   if (!state.user) return renderAuth();
@@ -1656,6 +1909,7 @@ async function route() {
   const h = location.hash.slice(1) || "lijst";
   if (h === "inchecken") return renderCheckin();
   if (h === "vrienden") return renderFriends();
+  if (h === "activiteit") return renderFeed();
   if (h === "profiel") return renderProfile();
   if (h === "beheer") return renderAdmin();
   if (h.startsWith("u/")) return renderUser(h.slice(2));
