@@ -57,7 +57,7 @@ body {
   color: var(--ink);
   font: 400 17px/1.5 var(--body);
   -webkit-font-smoothing: antialiased;
-  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 body::before {
   content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px);
@@ -85,24 +85,63 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand { font: 800 1.3rem var(--display); letter-spacing: -0.02em; text-decoration: none; color: var(--ink); display: flex; align-items: center; gap: 9px; }
 .brand svg { width: 22px; height: 26px; }
 
-/* Onderbalk */
-.tabs {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  background: var(--surface); border-top: 1px solid var(--line);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+/* Kopbalk en menu */
+.top .wrap.top-grid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 60px; max-width: none; }
+.top-left { display: flex; align-items: center; }
+.top-right { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+.brand { justify-self: center; }
+.icon-btn {
+  appearance: none; border: 0; background: transparent; color: var(--ink); cursor: pointer;
+  width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  text-decoration: none;
 }
-.tabs .wrap { display: grid; grid-template-columns: repeat(4, 1fr); height: 66px; padding: 0 6px; }
-.tabs a {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-  text-decoration: none; color: var(--muted); font-size: 0.78rem; font-weight: 600;
+.icon-btn:hover { background: var(--hop-soft); }
+.icon-btn svg { width: 26px; height: 26px; }
+.icon-btn.add { background: var(--hop); color: var(--hop-ink); border-radius: 50%; width: 38px; height: 38px; }
+.icon-btn.add svg { width: 20px; height: 20px; }
+#menuBtn .chev-close { display: none; }
+body.menu-open #menuBtn .chev-open { display: none; }
+body.menu-open #menuBtn .chev-close { display: inline; }
+
+.backdrop {
+  position: fixed; inset: 0; z-index: 18; background: rgba(20, 24, 18, 0.25);
+  opacity: 0; pointer-events: none;
 }
-.tabs a svg { width: 24px; height: 24px; }
-.tabs a[aria-current="page"] { color: var(--hop); }
-.tabs a.checkin span.icon {
-  background: var(--hop); color: var(--hop-ink); border-radius: 50%;
-  width: 40px; height: 40px; display: grid; place-items: center; margin-top: -6px;
+.drawer {
+  position: fixed; z-index: 19;
+  top: calc(60px + 12px + env(safe-area-inset-top, 0px)); left: 12px;
+  width: min(260px, calc(100vw - 24px));
+  max-height: calc(100vh - 96px - env(safe-area-inset-top, 0px)); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 20px;
+  padding: 12px; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 12px 32px rgba(20, 24, 18, 0.16);
+  opacity: 0; transform: translateX(-12px); visibility: hidden;
 }
-.tabs a.checkin svg { width: 22px; height: 22px; }
+body.menu-open .backdrop { opacity: 1; pointer-events: auto; }
+body.menu-open .drawer { opacity: 1; transform: none; visibility: visible; }
+@media (prefers-reduced-motion: no-preference) {
+  .backdrop { transition: opacity .18s; }
+  .drawer { transition: opacity .18s, transform .18s ease-out, visibility .18s; }
+  main { transition: padding-left .18s ease-out; }
+}
+.drawer a {
+  display: flex; align-items: center; gap: 14px; min-height: 48px; padding: 0 18px;
+  border: 1.5px solid var(--line); border-radius: 999px;
+  text-decoration: none; color: var(--ink); font-weight: 600; font-size: 1.05rem;
+}
+.drawer a svg { width: 22px; height: 22px; flex: none; }
+.drawer a:hover { border-color: var(--muted); }
+.drawer a[aria-current="page"] { background: var(--hop-soft); border-color: var(--hop); }
+.drawer-admin { display: flex; flex-direction: column; gap: 10px; }
+.drawer-admin[hidden] { display: none; }
+.drawer hr { border: 0; border-top: 1px solid var(--line); margin: 2px 8px; width: auto; }
+
+/* Brede schermen: menu naast de inhoud, inhoud schuift op */
+@media (min-width: 1000px) {
+  .backdrop { display: none; }
+  .drawer { box-shadow: none; }
+  body.menu-open main { padding-left: 290px; }
+}
 
 main { padding: 26px 0 40px; }
 .stack > * + * { margin-top: 16px; }
@@ -265,7 +304,7 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .switch input { width: 48px; height: 28px; accent-color: var(--hop); flex: none; }
 
 .toast {
-  position: fixed; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); z-index: 50;
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 50;
   transform: translateX(-50%); max-width: calc(100vw - 32px);
   background: var(--ink); color: var(--paper); padding: 12px 18px; border-radius: 12px;
   font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.2);
@@ -288,35 +327,35 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 <body>
 
 <header class="top">
-  <div class="wrap">
+  <div class="wrap top-grid">
+    <div class="top-left">
+      <button class="icon-btn" id="menuBtn" type="button" aria-label="Menu openen" aria-expanded="false" aria-controls="drawer" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/>
+          <path class="chev-open" d="M13.5 9.5 16 12l-2.5 2.5"/>
+          <path class="chev-close" d="M16 9.5 13.5 12l2.5 2.5"/>
+        </svg>
+      </button>
+    </div>
     <a class="brand" href="#lijst" id="brand">
       <svg viewBox="0 0 22 26" aria-hidden="true"><path d="M2 3h18l-2 21H4z" fill="var(--gold)"/><path d="M2 3h18l-.5 5H2.5z" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><path d="M2 3h18l-2 21H4z" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/></svg>
       Bierlijst
     </a>
-    <div id="topRight"></div>
+    <div id="topRight" class="top-right"></div>
   </div>
 </header>
 
 <main><div class="wrap" id="view"><div class="loading">Laden…</div></div></main>
 
-<nav class="tabs" id="tabs" hidden>
-  <div class="wrap">
-    <a href="#lijst" data-tab="lijst">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>
-      Mijn bieren
-    </a>
-    <a href="#inchecken" data-tab="inchecken" class="checkin">
-      <span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
-      Inchecken
-    </a>
-    <a href="#vrienden" data-tab="vrienden">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg>
-      Vrienden
-    </a>
-    <a href="#profiel" data-tab="profiel">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>
-      Profiel
-    </a>
+<div class="backdrop" id="backdrop"></div>
+<nav class="drawer" id="drawer" aria-label="Hoofdmenu">
+  <a href="#lijst" data-tab="lijst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>Mijn bieren</a>
+  <a href="#inchecken" data-tab="inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Inchecken</a>
+  <a href="#vrienden" data-tab="vrienden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg>Vrienden</a>
+  <a href="#profiel" data-tab="profiel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>Profiel</a>
+  <div class="drawer-admin" id="adminGroup" hidden>
+    <hr>
+    <a href="#beheer" data-tab="beheer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Beheer</a>
   </div>
 </nav>
 
@@ -400,11 +439,38 @@ function stars(r) {
 }
 
 function setTab(name) {
-  document.querySelectorAll("#tabs a").forEach(a => {
+  document.querySelectorAll("#drawer a").forEach(a => {
     if (a.dataset.tab === name) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   });
 }
+
+
+// Menu
+function setNav(loggedIn) {
+  $("#menuBtn").hidden = !loggedIn;
+  if (!loggedIn) closeMenu();
+  $("#adminGroup").hidden = !state.me?.is_admin;
+  $("#topRight").innerHTML = loggedIn ? `
+    <a class="icon-btn add" href="#inchecken" aria-label="Bier inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></a>` : "";
+}
+function openMenu() {
+  document.body.classList.add("menu-open");
+  $("#menuBtn").setAttribute("aria-expanded", "true");
+  $("#menuBtn").setAttribute("aria-label", "Menu sluiten");
+  const cur = $("#drawer a[aria-current]") || $("#drawer a");
+  cur.focus();
+}
+function closeMenu() {
+  if (!document.body.classList.contains("menu-open")) return;
+  document.body.classList.remove("menu-open");
+  $("#menuBtn").setAttribute("aria-expanded", "false");
+  $("#menuBtn").setAttribute("aria-label", "Menu openen");
+}
+$("#menuBtn").addEventListener("click", () => document.body.classList.contains("menu-open") ? closeMenu() : openMenu());
+$("#backdrop").addEventListener("click", closeMenu);
+$("#drawer").addEventListener("click", e => { if (e.target.closest("a") && !matchMedia("(min-width: 1000px)").matches) closeMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeMenu(); });
 
 function openDialog(html) {
   $("#dlgBody").innerHTML = html;
@@ -466,8 +532,7 @@ function friendlyAuthError(err) {
 
 function renderAuth(mode = "login") {
   setTab(null);
-  $("#tabs").hidden = true;
-  $("#topRight").innerHTML = "";
+  setNav(false);
   view().innerHTML = `
     <div class="auth stack">
       <h1>Elk bier dat je drinkt, op één plek.</h1>
@@ -662,7 +727,7 @@ async function renderUser(userId) {
 }
 
 async function renderPublic(username) {
-  $("#tabs").hidden = !state.user;
+  setNav(!!state.user);
   if (!state.user) {
     $("#topRight").innerHTML = `<a class="btn ghost small" href="${esc(SITE_URL)}">Inloggen</a>`;
   }
@@ -1187,7 +1252,7 @@ function tempPassword() {
 }
 
 async function renderAdmin() {
-  setTab("profiel");
+  setTab("beheer");
   if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
   view().innerHTML = `<div class="loading">Gebruikers ophalen…</div>`;
   const [{ data: users, error: uErr }, { data: invites }] = await Promise.all([
@@ -1369,7 +1434,7 @@ function bindPasswordForm(forced) {
 }
 function renderForcedPassword() {
   setTab(null);
-  $("#tabs").hidden = true;
+  setNav(false);
   view().innerHTML = `<div class="auth stack">${passwordForm(true)}<button class="btn ghost" id="logoutBtn2" type="button">Uitloggen</button></div>`;
   bindPasswordForm(true);
   $("#logoutBtn2").onclick = () => sb.auth.signOut();
@@ -1508,8 +1573,7 @@ async function route() {
   if (publicUser && (!location.hash || location.hash === "#")) return renderPublic(publicUser);
   if (!state.user) return renderAuth();
   if (state.me?.must_change_password) return renderForcedPassword();
-  $("#tabs").hidden = false;
-  $("#topRight").innerHTML = "";
+  setNav(true);
   const h = location.hash.slice(1) || "lijst";
   if (h === "inchecken") return renderCheckin();
   if (h === "vrienden") return renderFriends();
