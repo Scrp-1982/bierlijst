@@ -288,6 +288,51 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .checkin-item img { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; }
 .who { font-weight: 700; }
 
+/* Badges als bierviltjes */
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 14px 10px; }
+.badges.center { justify-content: center; grid-template-columns: repeat(auto-fit, 120px); }
+.badge {
+  appearance: none; border: 0; background: transparent; color: inherit; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 4px;
+  border-radius: 14px;
+}
+.badge:hover .coaster { transform: rotate(-6deg); }
+.badge-name { font-weight: 700; font-size: 0.88rem; line-height: 1.2; hyphens: auto; -webkit-hyphens: auto; overflow-wrap: break-word; max-width: 100%; }
+.badge > .muted.small { font-size: 0.78rem; white-space: nowrap; }
+.coaster {
+  position: relative; width: 78px; height: 78px; border-radius: 50%; display: grid; place-items: center;
+  background:
+    radial-gradient(circle at 50% 50%, var(--surface) 0 58%, transparent 59%),
+    repeating-conic-gradient(var(--tier) 0 6deg, color-mix(in srgb, var(--tier) 70%, var(--surface)) 6deg 12deg);
+  box-shadow: inset 0 0 0 3px var(--tier);
+}
+@media (prefers-reduced-motion: no-preference) { .coaster { transition: transform .2s; } }
+.coaster .em { font-size: 2.1rem; line-height: 1; }
+.coaster.locked { background: var(--paper); box-shadow: inset 0 0 0 2px var(--line); }
+.coaster.locked .em { filter: grayscale(1); opacity: .45; }
+.coaster .lvl {
+  position: absolute; right: -2px; bottom: -2px; min-width: 26px; height: 26px; padding: 0 6px; border-radius: 13px;
+  background: var(--tier); color: #fff; font: 800 0.85rem/26px var(--display); text-align: center;
+  box-shadow: 0 0 0 3px var(--paper);
+}
+.coaster.big { width: 120px; height: 120px; margin: 0 auto; }
+.coaster.big .em { font-size: 3.3rem; }
+.badge.small .coaster { width: 56px; height: 56px; }
+.badge.small .coaster .em { font-size: 1.5rem; }
+.badge.small .coaster .lvl { min-width: 20px; height: 20px; line-height: 20px; font-size: .72rem; }
+.badge.small .badge-name { font-size: 0.78rem; font-weight: 600; }
+.bar { display: block; width: 100%; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--hop); }
+.badge-detail { text-align: center; }
+.badge-detail .levels { text-align: left; }
+.levels { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.levels li { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.levels li.done { color: var(--ink); font-weight: 600; }
+.levels .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; opacity: .35; }
+.levels li.done .dot { opacity: 1; }
+.badge-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.badge-strip .badge { flex: 0 0 84px; }
+
 /* Activiteit */
 .feed { display: grid; gap: 14px; }
 .post { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px; }
@@ -409,6 +454,7 @@ section.stack > h2 + * { margin-top: 10px; }
   <a href="#lijst" data-tab="lijst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>Mijn bieren</a>
   <a href="#activiteit" data-tab="activiteit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Activiteit</a>
   <a href="#inchecken" data-tab="inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Inchecken</a>
+  <a href="#badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>Badges</a>
   <a href="#vrienden" data-tab="vrienden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg>Vrienden</a>
   <a href="#profiel" data-tab="profiel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>Profiel</a>
   <div class="drawer-admin" id="adminGroup" hidden>
@@ -431,7 +477,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-21.6";
+const APP_VERSION = "2026-10-21.7";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -748,6 +794,18 @@ function renderCollection(groups, { title, intro, own, profile }) {
           </div>
           <div class="spectrum-legend"><span>Licht</span><span>Donker</span></div>
         </div>
+        ${(() => {
+          const earned = earnedSorted(computeBadges(groups.flatMap(g => g.checkins.map(c => ({ ...c, beer: g.beer })))));
+          if (!earned.length) return "";
+          const link = state.user ? `#badges${own ? "" : "/" + profile?.id}` : "";
+          return `<section>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+              <h2>Badges</h2>
+              ${link ? `<a href="${link}" class="small">Alle ${earned.length} bekijken</a>` : `<span class="muted small">${earned.length} verdiend</span>`}
+            </div>
+            <div class="badge-strip" style="margin-top:8px">${earned.slice(0, 10).map(b => badgeHtml(b, true)).join("")}</div>
+          </section>`;
+        })()}
         <div class="stats">
           <div><b>${groups.length}</b><span>unieke bieren</span></div>
           <div><b>${total}</b><span>keer ingecheckt</span></div>
@@ -815,6 +873,12 @@ function renderCollection(groups, { title, intro, own, profile }) {
   ["fSearch", "fStyle", "fSort"].forEach(id => $("#" + id).addEventListener("input", draw));
   draw();
 
+  view().onclick = e => {
+    const bd = e.target.closest("[data-badge]");
+    if (!bd) return;
+    const all = computeBadges(groups.flatMap(g => g.checkins.map(c => ({ ...c, beer: g.beer }))));
+    showBadgeDialog(all.find(x => x.key === bd.dataset.badge));
+  };
   $("#beerList").addEventListener("click", e => {
     const b = e.target.closest("[data-beer]");
     if (!b) return;
@@ -1040,9 +1104,10 @@ function beerFields(b = {}) {
     <div class="grid3">
       <label class="field"><span>Alcohol %</span><input class="input" name="abv" type="number" step="0.1" min="0" max="70" inputmode="decimal" value="${esc(b.abv)}"></label>
       <label class="field"><span>IBU</span><input class="input" name="ibu" type="number" step="1" min="0" max="300" inputmode="numeric" value="${esc(b.ibu)}"></label>
-      <label class="field"><span>Land</span><input class="input" name="country" value="${esc(b.country)}"></label>
+      <label class="field"><span>Land</span><input class="input" name="country" list="countryList" value="${esc(b.country)}"></label>
     </div>
     <label class="field"><span>Omschrijving</span><textarea class="input" name="description">${esc(b.description)}</textarea></label>
+    <datalist id="countryList">${COUNTRIES.map(c => `<option value="${c[1]}">`).join("")}</datalist>
     <datalist id="styleList">
       ${["Pils", "Lager", "Blond", "Witbier", "Weizen", "Tripel", "Dubbel", "Quadrupel", "IPA", "Double IPA", "NEIPA", "Pale Ale", "Saison", "Amber", "Bock", "Stout", "Imperial Stout", "Porter", "Kriek", "Geuze", "Sour", "Alcoholvrij"].map(s => `<option value="${s}">`).join("")}
     </datalist>`;
@@ -1237,7 +1302,14 @@ function renderCheckin() {
         ${d.prefill?.source === "openfoodfacts" ? `<p class="muted small">Gegevens gevonden via Open Food Facts. Controleer ze en vul aan waar nodig.</p>` : ""}
         ${d.prefill?.barcode && d.prefill?.source !== "openfoodfacts" ? `<p class="muted small">Barcode ${esc(d.prefill.barcode)} is nog onbekend. Vul de gegevens in, dan herkent de app dit bier voortaan.</p>` : ""}
         ${beerFields(d.prefill || {})}
-      </div>`) : "";
+      </div>
+      ${d.prefill?.barcode ? `
+      <div class="panel stack" id="linkBox">
+        <h2>Staat dit bier al in jullie lijst?</h2>
+        <p class="muted small">Koppel barcode ${esc(d.prefill.barcode)} aan het bestaande bier. Dan herkent de app het voortaan bij het scannen.</p>
+        <input class="input" type="search" id="linkSearch" placeholder="Zoek op naam of brouwerij" autocomplete="off">
+        <div class="results" id="linkResults"></div>
+      </div>` : ""}`) : "";
 
   view().innerHTML = `
     <form class="stack" id="checkinForm" novalidate>
@@ -1365,6 +1437,39 @@ function renderCheckin() {
 
   $("#changeBtn").onclick = () => { state.draft = null; renderCheckin(); };
 
+  const ls = $("#linkSearch");
+  if (ls) {
+    let lt, lseq = 0, found = [];
+    ls.onkeydown = e => { if (e.key === "Enter") e.preventDefault(); };
+    ls.oninput = () => {
+      clearTimeout(lt);
+      const q = ls.value.trim().replace(/[,()%*\\]/g, " ").trim();
+      if (q.length < 2) { $("#linkResults").innerHTML = ""; return; }
+      lt = setTimeout(async () => {
+        const my = ++lseq;
+        const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8);
+        if (my !== lseq) return;
+        found = data || [];
+        $("#linkResults").innerHTML = found.length ? found.map(b => `
+          <button type="button" class="result" data-link="${b.id}" ${b.barcode ? "disabled" : ""}>
+            <span><b>${esc(b.name)}</b><br><span class="muted small">${esc([b.brewery, b.style].filter(Boolean).join(", "))}</span></span>
+            <span class="muted small">${b.barcode ? "Heeft al een barcode" : "Koppelen"}</span>
+          </button>`).join("") : `<p class="muted small">Niet gevonden. Vul hierboven de gegevens in als nieuw bier.</p>`;
+      }, 300);
+    };
+    $("#linkResults").onclick = async e => {
+      const r = e.target.closest("[data-link]");
+      if (!r || r.disabled) return;
+      r.disabled = true;
+      const { error } = await sb.rpc("link_barcode", { beer: r.dataset.link, code: d.prefill.barcode });
+      if (error) { r.disabled = false; return toast(error.message); }
+      const beer = found.find(b => b.id === r.dataset.link);
+      state.draft = { beer: { ...beer, barcode: d.prefill.barcode } };
+      toast("Barcode gekoppeld. Voortaan herkent de app dit bier.");
+      renderCheckin();
+    };
+  }
+
   const r = $("#rating");
   r.oninput = () => { $("#ratingOut").textContent = nf(r.value, 1); $("#ratingStars").innerHTML = stars(r.value); };
 
@@ -1424,7 +1529,7 @@ function renderCheckin() {
       }
 
       const lat = f.get("latitude"), lon = f.get("longitude");
-      const { error } = await sb.from("checkins").insert({
+      const { data: inserted, error } = await sb.from("checkins").insert({
         beer_id: beer.id,
         rating: Number(f.get("rating")),
         serving: f.get("serving") || null,
@@ -1434,11 +1539,17 @@ function renderCheckin() {
         drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : new Date().toISOString(),
         notes: clampChars(String(f.get("notes") || "").trim(), 300) || null,
         photo_path,
-      });
+      }).select("id").single();
       if (error) throw error;
       state.draft = null;
       toast(`${beer.name} ingecheckt. Proost!`);
+      let fresh = [];
+      try {
+        const all = await fetchCheckins(state.user.id);
+        fresh = newBadgesBetween(computeBadges(all.filter(c => c.id !== inserted.id)), computeBadges(all));
+      } catch {}
       location.hash = "lijst";
+      if (fresh.length) setTimeout(() => celebrate(fresh), 400);
     } catch (ex) {
       err.textContent = ex.message || "Opslaan lukte niet.";
       err.hidden = false;
@@ -1506,6 +1617,244 @@ async function startScan() {
       /NotReadable|in use/i.test(t) ? "De camera is in gebruik door een andere app. Sluit die app en probeer het opnieuw." :
       `De camera kon niet worden gestart (${t}). Gebruik de knop 'Foto van de barcode maken', of zoek het bier op naam.`;
   }
+}
+
+// ---------------------------------------------------------------------
+// Badges: berekend uit de check-ins
+// ---------------------------------------------------------------------
+const COUNTRIES = [
+  ["NL", "Nederland", "nederland netherlands the-netherlands holland nl pays-bas niederlande paesi-bassi"],
+  ["BE", "België", "belgie belgië belgium belgique be belgien"],
+  ["DE", "Duitsland", "duitsland germany deutschland de allemagne"],
+  ["GB", "Verenigd Koninkrijk", "verenigd-koninkrijk united-kingdom uk gb england engeland scotland schotland wales great-britain groot-brittannie groot-brittannië"],
+  ["IE", "Ierland", "ierland ireland ie eire"],
+  ["FR", "Frankrijk", "frankrijk france fr frankreich"],
+  ["CZ", "Tsjechië", "tsjechie tsjechië czech-republic czechia cz tschechien"],
+  ["US", "Verenigde Staten", "verenigde-staten united-states usa us amerika america united-states-of-america"],
+  ["DK", "Denemarken", "denemarken denmark dk danmark"],
+  ["AT", "Oostenrijk", "oostenrijk austria at osterreich österreich"],
+  ["IT", "Italië", "italie italië italy it italia"],
+  ["ES", "Spanje", "spanje spain es espana españa"],
+  ["PT", "Portugal", "portugal pt"],
+  ["PL", "Polen", "polen poland pl polska"],
+  ["SE", "Zweden", "zweden sweden se sverige"],
+  ["NO", "Noorwegen", "noorwegen norway no norge"],
+  ["FI", "Finland", "finland fi suomi"],
+  ["CH", "Zwitserland", "zwitserland switzerland ch schweiz suisse"],
+  ["LU", "Luxemburg", "luxemburg luxembourg lu"],
+  ["EE", "Estland", "estland estonia ee"],
+  ["LT", "Litouwen", "litouwen lithuania lt"],
+  ["MX", "Mexico", "mexico mx méxico"],
+  ["CA", "Canada", "canada ca"],
+  ["JP", "Japan", "japan jp"],
+  ["CN", "China", "china cn"],
+  ["TH", "Thailand", "thailand th"],
+  ["AU", "Australië", "australie australië australia au"],
+  ["NZ", "Nieuw-Zeeland", "nieuw-zeeland new-zealand nz"],
+  ["BR", "Brazilië", "brazilie brazilië brazil br brasil"],
+  ["ZA", "Zuid-Afrika", "zuid-afrika south-africa za"],
+];
+function normCountry(raw) {
+  if (!raw) return null;
+  const k = String(raw).toLowerCase().replace(/^[a-z]{2}:/, "").trim().replace(/\s+/g, "-");
+  if (!k) return null;
+  for (const [code, name, al] of COUNTRIES) if (al.split(" ").includes(k)) return { code, name };
+  const t = String(raw).replace(/^[a-z]{2}:/, "").trim();
+  return { code: null, name: t[0].toUpperCase() + t.slice(1) };
+}
+function flag(code) {
+  return code ? String.fromCodePoint(...[...code].map(c => 0x1F1A5 + c.charCodeAt(0))) : "🏳️";
+}
+
+const STYLE_GROUPS = [
+  ["tripel", "Tripelridder", "🔱", "tripels", /tripel/],
+  ["ipa", "Hopkop", "🌿", "IPA’s en pale ales", /ipa|pale ale|apa\b/],
+  ["stout", "Donkere kant", "🌑", "stouts en porters", /stout|porter/],
+  ["wit", "Witte wolk", "☁️", "witbieren en weizens", /wit|weizen|weiss|weiß|wheat|blanche/],
+  ["sour", "Zuurpruim", "🍋", "zure bieren", /sour|zuur|gose|berliner|lambiek|lambic|geuze|gueuze/],
+  ["pils", "Pilsener", "🥂", "pilsjes en lagers", /pils|lager|helles|kölsch|kolsch/],
+  ["abdij", "Abdijganger", "⛪", "dubbels, quadrupels en trappisten", /dubbel|quad|abdij|abbey|trappist/],
+  ["bock", "Bokkenrijder", "🐐", "bokbieren", /\bbock|\bbok\b|bokbier/],
+  ["blond", "Blonde jongen", "🌾", "blonde bieren", /blond|golden/],
+  ["saison", "Boerenknecht", "🚜", "saisons", /saison|farmhouse/],
+  ["fruit", "Fruitmand", "🍒", "fruitbieren", /fruit|kriek|framboos|raspberry|cherry/],
+];
+const NONALC = /alcoholvrij|alcohol-?free|non-?alcoholic|\b0[.,]0\b/;
+
+const TIER_COLORS = ["#B87333", "#A9AEB4", "#D9A21B", "#4FA3A5", "#7C6BD6", "#C2417B", "#2E7D4F", "#1F2A44"];
+
+// Statische badge-families
+const BADGE_FAMILIES = {
+  unique:    { name: "Verzamelaar", emoji: "🍺", t: [1, 10, 25, 50, 100, 250, 500, 1000], desc: t => `Drink ${t} ${t === 1 ? "bier" : "verschillende bieren"}` },
+  checkins:  { name: "Vaste gast", emoji: "🔁", t: [10, 50, 100, 250, 500], desc: t => `Check ${t} keer een bier in` },
+  countries: { name: "Wereldreiziger", emoji: "🌍", t: [3, 5, 10, 20, 30], desc: t => `Drink bier uit ${t} verschillende landen` },
+  breweries: { name: "Brouwerijhopper", emoji: "🏭", t: [10, 25, 50, 100], desc: t => `Drink bier van ${t} verschillende brouwerijen` },
+  strong:    { name: "Sterk spul", emoji: "💪", t: [1, 5, 10, 25], desc: t => `Drink ${t} ${t === 1 ? "bier" : "verschillende bieren"} van 10% of meer` },
+  nonalc:    { name: "Bob", emoji: "🚗", t: [1, 5, 10, 25], desc: t => `Drink ${t} ${t === 1 ? "alcoholvrij bier" : "verschillende alcoholvrije bieren"}` },
+  photos:    { name: "Fotograaf", emoji: "📸", t: [5, 25, 100], desc: t => `Voeg bij ${t} check-ins een foto toe` },
+  notes:     { name: "Proefnotitie", emoji: "✍️", t: [10, 50, 100], desc: t => `Schrijf bij ${t} check-ins een notitie` },
+  night:     { name: "Nachtuil", emoji: "🦉", t: [1, 5, 10], desc: t => `Check ${t} keer in tussen middernacht en 4 uur ’s nachts` },
+  places:    { name: "Op stap", emoji: "📍", t: [5, 10, 25, 50], desc: t => `Check in op ${t} verschillende locaties` },
+};
+
+function computeBadges(checkins) {
+  const sorted = [...checkins].filter(c => c.beer).sort((a, b) => a.drunk_at.localeCompare(b.drunk_at));
+  const fam = {};
+  const ensure = (key, meta) => (fam[key] ||= { key, ...meta, count: 0, dates: [] });
+  const bump = (key, meta, date) => {
+    const f = ensure(key, meta);
+    f.count++;
+    if (f.t.includes(f.count)) f.dates.push(date);
+  };
+  const seenBeer = new Set(), seenCountry = new Set(), seenBrewery = new Set(), seenPlace = new Set();
+  for (const k of Object.keys(BADGE_FAMILIES)) ensure(k, BADGE_FAMILIES[k]);
+
+  for (const c of sorted) {
+    const d = c.drunk_at, b = c.beer;
+    bump("checkins", BADGE_FAMILIES.checkins, d);
+    if (c.photo_path) bump("photos", BADGE_FAMILIES.photos, d);
+    if (c.notes) bump("notes", BADGE_FAMILIES.notes, d);
+    const h = new Date(d).getHours();
+    if (h >= 0 && h < 4) bump("night", BADGE_FAMILIES.night, d);
+    const place = (c.location_name || "").trim().toLowerCase();
+    if (place && !seenPlace.has(place)) { seenPlace.add(place); bump("places", BADGE_FAMILIES.places, d); }
+
+    if (seenBeer.has(c.beer_id)) continue;
+    seenBeer.add(c.beer_id);
+    bump("unique", BADGE_FAMILIES.unique, d);
+    if (b.abv != null && Number(b.abv) >= 10) bump("strong", BADGE_FAMILIES.strong, d);
+    const style = (b.style || "").toLowerCase();
+    if (NONALC.test(style) || (b.abv != null && Number(b.abv) <= 0.5)) bump("nonalc", BADGE_FAMILIES.nonalc, d);
+
+    const ct = normCountry(b.country);
+    if (ct) {
+      const ck = (ct.code || ct.name).toLowerCase();
+      if (!seenCountry.has(ck)) { seenCountry.add(ck); bump("countries", BADGE_FAMILIES.countries, d); }
+      bump("country:" + ck, { name: `Bier uit ${ct.name}`, emoji: flag(ct.code), t: [10, 25, 50, 100], desc: t => `Drink ${t} verschillende bieren uit ${ct.name}`, group: "country" }, d);
+    }
+    const br = (b.brewery || "").trim();
+    if (br) {
+      const bk = br.toLowerCase();
+      if (!seenBrewery.has(bk)) { seenBrewery.add(bk); bump("breweries", BADGE_FAMILIES.breweries, d); }
+      bump("brewery:" + bk, { name: `Fan van ${br}`, emoji: "🏷️", t: [5, 10, 25], desc: t => `Drink ${t} verschillende bieren van ${br}`, group: "brewery" }, d);
+    }
+    for (const [id, name, emoji, plural, re] of STYLE_GROUPS) {
+      if (re.test(style)) bump("style:" + id, { name, emoji, t: [5, 10, 25, 50], desc: t => `Drink ${t} verschillende ${plural}`, group: "style" }, d);
+    }
+  }
+
+  return Object.values(fam).map(f => {
+    const level = f.dates.length;
+    const next = f.t[level];
+    const prev = level ? f.t[level - 1] : 0;
+    return {
+      key: f.key, name: f.name, emoji: f.emoji, group: f.group || "general",
+      level, maxLevel: f.t.length, thresholds: f.t, dates: f.dates, count: f.count,
+      earnedAt: level ? f.dates[level - 1] : null,
+      next, desc: f.desc(next ?? f.t[f.t.length - 1]), descOf: f.desc,
+      progress: next ? Math.min(1, f.count / next) : 1,
+    };
+  });
+}
+
+function badgeHtml(b, small) {
+  const earned = b.level > 0;
+  const color = TIER_COLORS[Math.max(0, b.level - 1)] || TIER_COLORS[TIER_COLORS.length - 1];
+  return `
+    <button type="button" class="badge ${small ? "small" : ""}" data-badge="${esc(b.key)}" style="--tier:${earned ? color : "var(--line)"}">
+      <span class="coaster ${earned ? "" : "locked"}">
+        <span class="em" aria-hidden="true">${b.emoji}</span>
+        ${earned ? `<span class="lvl">${b.level}</span>` : ""}
+      </span>
+      <span class="badge-name">${esc(b.name)}</span>
+      ${small ? "" : earned
+        ? `<span class="muted small">${b.level === b.maxLevel ? "Hoogste niveau" : `Niveau ${b.level}`}</span>`
+        : `<span class="bar" aria-hidden="true"><span style="width:${Math.round(b.progress * 100)}%"></span></span><span class="muted small">${b.count} / ${b.next}</span>`}
+    </button>`;
+}
+
+function showBadgeDialog(b) {
+  const earned = b.level > 0;
+  openDialog(`
+    <div class="stack badge-detail" style="--tier:${earned ? TIER_COLORS[b.level - 1] || TIER_COLORS.at(-1) : "var(--line)"}">
+      <span class="coaster big ${earned ? "" : "locked"}"><span class="em" aria-hidden="true">${b.emoji}</span>${earned ? `<span class="lvl">${b.level}</span>` : ""}</span>
+      <h2>${esc(b.name)}</h2>
+      ${earned ? `<p class="muted">Niveau ${b.level} van ${b.maxLevel}, verdiend op ${fmtDate(b.earnedAt)}</p>` : `<p class="muted">Nog niet verdiend</p>`}
+      ${b.next ? `
+        <div>
+          <p><b>Volgende niveau:</b> ${esc(b.desc)}</p>
+          <span class="bar" aria-hidden="true"><span style="width:${Math.round(b.progress * 100)}%"></span></span>
+          <p class="muted small">${b.count} van ${b.next}</p>
+        </div>` : `<p>Je hebt het hoogste niveau bereikt. Proost!</p>`}
+      <div>
+        <h3>Alle niveaus</h3>
+        <ol class="levels">
+          ${b.thresholds.map((t, i) => `<li class="${i < b.level ? "done" : ""}"><span class="dot" style="background:${TIER_COLORS[i] || TIER_COLORS.at(-1)}"></span>${esc(b.descOf(t))}${b.dates[i] ? ` <span class="muted small">(${fmtDate(b.dates[i])})</span>` : ""}</li>`).join("")}
+        </ol>
+      </div>
+    </div>`);
+}
+
+function earnedSorted(badges) {
+  return badges.filter(b => b.level > 0).sort((a, b) => b.earnedAt.localeCompare(a.earnedAt));
+}
+
+async function renderBadges(userId) {
+  setTab("badges");
+  const id = userId || state.user.id;
+  const own = id === state.user.id;
+  view().innerHTML = `<div class="loading">Badges berekenen…</div>`;
+  let profile = state.me, checkins;
+  try {
+    if (!own) ({ data: profile } = await sb.from("profiles").select("*").eq("id", id).maybeSingle());
+    checkins = await fetchCheckins(id);
+  } catch (err) {
+    view().innerHTML = `<p class="error">Badges konden niet worden geladen: ${esc(err.message)}</p>`;
+    return;
+  }
+  const badges = computeBadges(checkins);
+  const earned = earnedSorted(badges);
+  const levels = earned.reduce((n, b) => n + b.level, 0);
+  const almost = badges
+    .filter(b => b.next && b.count > 0)
+    .filter(b => b.group === "general" || b.group === "style" || b.count >= 2)
+    .sort((a, b) => b.progress - a.progress)
+    .slice(0, 8);
+  const locked = badges.filter(b => b.group === "general" && b.level === 0 && b.count === 0);
+
+  view().innerHTML = `
+    <div class="stack">
+      <div class="title-with-avatar">
+        ${!own ? avatarHtml(profile, 56) : ""}
+        <div>
+          <h1>${own ? "Mijn badges" : `Badges van ${esc(profile?.display_name || "een vriend")}`}</h1>
+          <p class="muted">${earned.length} ${earned.length === 1 ? "badge" : "badges"} verdiend, ${levels} ${levels === 1 ? "niveau" : "niveaus"} in totaal</p>
+        </div>
+      </div>
+      ${earned.length ? `<section class="stack"><h2>Verdiend</h2><div class="badges">${earned.map(b => badgeHtml(b)).join("")}</div></section>`
+        : `<div class="panel empty"><span class="coaster big locked" style="--tier:var(--line);margin:0 auto 12px"><span class="em">🍺</span></span><h2>Nog geen badges</h2><p class="muted">${own ? "Check je eerste bier in en verdien meteen je eerste badge." : "Nog niets verdiend."}</p></div>`}
+      ${almost.length ? `<section class="stack"><h2>Bijna</h2><div class="badges">${almost.map(b => badgeHtml(b)).join("")}</div></section>` : ""}
+      ${locked.length ? `<section class="stack"><h2>Nog te verdienen</h2><div class="badges">${locked.map(b => badgeHtml(b)).join("")}</div></section>` : ""}
+    </div>`;
+  view().onclick = e => {
+    const el = e.target.closest("[data-badge]");
+    if (el) showBadgeDialog(badges.find(b => b.key === el.dataset.badge));
+  };
+}
+
+function newBadgesBetween(before, after) {
+  const prev = Object.fromEntries(before.map(b => [b.key, b.level]));
+  return after.filter(b => b.level > (prev[b.key] || 0));
+}
+function celebrate(newOnes) {
+  openDialog(`
+    <div class="stack" style="text-align:center">
+      <h2>${newOnes.length === 1 ? "Nieuwe badge!" : `${newOnes.length} nieuwe badges!`}</h2>
+      <div class="badges center">${newOnes.map(b => badgeHtml(b)).join("")}</div>
+      <p class="muted">${newOnes.map(b => esc(b.descOf(b.thresholds[b.level - 1]))).join(". ")}.</p>
+      <button class="btn" type="button" id="celebrateOk">Proost!</button>
+    </div>`);
+  $("#celebrateOk").onclick = closeDialog;
 }
 
 // ---------------------------------------------------------------------
@@ -2190,6 +2539,7 @@ const params = new URLSearchParams(location.search);
 const publicUser = params.get("u");
 
 async function route() {
+  if ($("#dlg").open) closeDialog();
   view().onclick = null;
   view().onchange = null;
   view().onsubmit = null;
@@ -2203,6 +2553,8 @@ async function route() {
   if (h === "inchecken") return renderCheckin();
   if (h === "vrienden") return renderFriends();
   if (h === "activiteit") return renderFeed();
+  if (h === "badges") return renderBadges();
+  if (h.startsWith("badges/")) return renderBadges(h.slice(7));
   if (h === "profiel") return renderProfile();
   if (h === "beheer") return renderAdmin();
   if (h.startsWith("u/")) return renderUser(h.slice(2));
