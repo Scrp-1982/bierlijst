@@ -254,6 +254,13 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 }
 .person .grow { flex: 1; min-width: 0; }
 
+.user-row { display: grid; grid-template-columns: 1fr auto; gap: 12px 16px; align-items: center; padding: 16px 0; border-top: 1px solid var(--line); }
+.user-row:first-of-type { border-top: 0; }
+.user-info { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.user-info > div { min-width: 0; overflow-wrap: anywhere; }
+.admin-switch { gap: 8px; font-weight: 600; font-size: .92rem; }
+.switch.admin-switch input { width: 22px; height: 22px; }
+.user-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
 .switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
 .switch input { width: 48px; height: 28px; accent-color: var(--hop); flex: none; }
 
@@ -475,6 +482,7 @@ function renderAuth(mode = "login") {
         ${mode === "signup" ? `<label class="field"><span>Je naam</span><input class="input" name="name" autocomplete="nickname" required></label>` : ""}
         <p class="error" id="authErr" hidden></p>
         <button class="btn block" type="submit">${mode === "login" ? "Inloggen" : "Account maken"}</button>
+        ${mode === "login" ? `<p class="muted small">Wachtwoord vergeten? Vraag de beheerder om een tijdelijk wachtwoord.</p>` : ""}
       </form>
     </div>`;
   view().querySelectorAll("[data-mode]").forEach(b => b.onclick = () => renderAuth(b.dataset.mode));
@@ -688,7 +696,7 @@ async function showBeer(g, { own }) {
         <p>${stars(c.rating)} ${c.rating != null ? `<b>${nf(c.rating, 2)}</b>` : ""}</p>
         <p class="muted small">${fmtDate(c.drunk_at)}${c.serving ? `, ${esc(c.serving)}` : ""}${c.location_name ? `, ${esc(c.location_name)}` : ""}</p>
         ${c.notes ? `<p style="margin-top:6px">${esc(c.notes)}</p>` : ""}
-        ${state.user && c.user_id === state.user.id ? `<button class="btn danger small" style="margin-top:10px" data-del="${c.id}">Check-in verwijderen</button>` : ""}
+        ${state.user && c.user_id === state.user.id ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn ghost small" data-edit="${c.id}">Wijzigen</button><button class="btn danger small" data-del="${c.id}">Verwijderen</button></div>` : ""}
       </div>
       ${c.photo_path ? `<a href="${esc(photoUrl(c.photo_path))}" target="_blank" rel="noopener"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto bij check-in" loading="lazy"></a>` : ""}
     </div>`;
@@ -725,6 +733,8 @@ async function showBeer(g, { own }) {
   if (edit) edit.onclick = () => editBeer(b);
 
   $("#dlgBody").onclick = async e => {
+    const ed = e.target.closest("[data-edit]");
+    if (ed) return editCheckin(g.checkins.find(c => c.id === ed.dataset.edit), b);
     const del = e.target.closest("[data-del]");
     if (!del) return;
     if (!confirm("Deze check-in verwijderen?")) return;
@@ -747,6 +757,90 @@ async function showBeer(g, { own }) {
       $("#othersBox").innerHTML = `<h3>Ook gedronken door</h3>${data.map(c => checkinHtml(c, c.profile?.display_name)).join("")}`;
     }
   }
+}
+
+
+function servingOptions(selected) {
+  return ["tap", "fles", "blik", "anders"].map(s => `<label><input type="radio" name="serving" value="${s}" ${selected === s ? "checked" : ""}><span>${s[0].toUpperCase() + s.slice(1)}</span></label>`).join("");
+}
+function toLocalInput(iso) {
+  const d = new Date(iso);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function editCheckin(c, beer) {
+  if (!c) return;
+  const r0 = c.rating != null ? Number(c.rating) : 3.5;
+  openDialog(`
+    <form class="stack" id="editCheckinForm">
+      <h2>Check-in wijzigen</h2>
+      <p class="muted">${esc(beer.name)}</p>
+      <div>
+        <label class="field" for="eRating"><span>Score</span></label>
+        <div class="rating-row">
+          <input type="range" id="eRating" name="rating" min="0" max="5" step="0.25" value="${r0}">
+          <output id="eRatingOut">${nf(r0, 1)}</output>
+        </div>
+        <div id="eRatingStars">${stars(r0)}</div>
+      </div>
+      <div>
+        <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Hoe gedronken</span>
+        <div class="segmented">${servingOptions(c.serving)}</div>
+      </div>
+      <label class="field"><span>Locatie</span><input class="input" name="location_name" value="${esc(c.location_name)}"></label>
+      <label class="field"><span>Wanneer</span><input class="input" type="datetime-local" name="drunk_at" value="${toLocalInput(c.drunk_at)}"></label>
+      <label class="field"><span>Notities</span><textarea class="input" name="notes">${esc(c.notes)}</textarea></label>
+      <div>
+        <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Foto</span>
+        <div class="photo-pick">
+          <img id="ePhotoPreview" alt="" ${c.photo_path ? `src="${esc(photoUrl(c.photo_path))}"` : "hidden"}>
+          <label class="btn soft small" style="cursor:pointer">
+            <input type="file" accept="image/*" id="ePhotoInput" hidden>
+            ${c.photo_path ? "Andere foto kiezen" : "Foto toevoegen"}
+          </label>
+        </div>
+      </div>
+      <button class="btn block" type="submit" id="eSave">Wijzigingen opslaan</button>
+    </form>`);
+
+  const r = $("#eRating");
+  r.oninput = () => { $("#eRatingOut").textContent = nf(r.value, 1); $("#eRatingStars").innerHTML = stars(r.value); };
+  let photoFile = null;
+  $("#ePhotoInput").onchange = e => {
+    photoFile = e.target.files[0] || null;
+    if (photoFile) { const img = $("#ePhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
+  };
+  $("#editCheckinForm").onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const btn = $("#eSave");
+    btn.disabled = true; btn.textContent = "Opslaan…";
+    try {
+      const update = {
+        rating: Number(f.get("rating")),
+        serving: f.get("serving") || null,
+        location_name: String(f.get("location_name") || "").trim() || null,
+        drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : c.drunk_at,
+        notes: String(f.get("notes") || "").trim() || null,
+      };
+      if (photoFile) {
+        btn.textContent = "Foto uploaden…";
+        update.photo_path = await uploadPhoto(photoFile);
+        if (!beer.image_path && beer.created_by === state.user.id) {
+          await sb.from("beers").update({ image_path: update.photo_path }).eq("id", beer.id);
+        }
+      }
+      const { error } = await sb.from("checkins").update(update).eq("id", c.id);
+      if (error) throw error;
+      if (photoFile && c.photo_path && !/^https?:/.test(c.photo_path) && c.photo_path !== beer.image_path) {
+        await sb.storage.from("photos").remove([c.photo_path]);
+      }
+      closeDialog(); toast("Check-in bijgewerkt"); route();
+    } catch (ex) {
+      toast("Opslaan lukte niet: " + (ex.message || ex));
+      btn.disabled = false; btn.textContent = "Wijzigingen opslaan";
+    }
+  };
 }
 
 function beerFields(b = {}) {
@@ -885,7 +979,7 @@ function renderCheckin() {
         <div>
           <span class="field" style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Hoe gedronken</span>
           <div class="segmented">
-            ${["tap", "fles", "blik", "anders"].map(s => `<label><input type="radio" name="serving" value="${s}"><span>${s[0].toUpperCase() + s.slice(1)}</span></label>`).join("")}
+            ${servingOptions(null)}
           </div>
         </div>
         <div>
@@ -900,7 +994,7 @@ function renderCheckin() {
           <div class="photo-pick">
             <img id="photoPreview" alt="" hidden>
             <label class="btn soft small" style="cursor:pointer">
-              <input type="file" accept="image/*" capture="environment" id="photoInput" hidden>
+              <input type="file" accept="image/*" id="photoInput" hidden>
               Foto maken of kiezen
             </label>
           </div>
@@ -1054,19 +1148,19 @@ async function startScan() {
 }
 
 // ---------------------------------------------------------------------
-// Vrienden en uitnodigingen
+// Vrienden
 // ---------------------------------------------------------------------
+const initial = n => esc((n || "?").trim()[0]?.toUpperCase() || "?");
+
 async function renderFriends() {
   setTab("vrienden");
   view().innerHTML = `<div class="loading">Vrienden ophalen…</div>`;
-  const [{ data: people }, { data: rows }, { data: invites }] = await Promise.all([
+  const [{ data: people }, { data: rows }] = await Promise.all([
     sb.from("profiles").select("id, display_name, username, bio").neq("id", state.user.id).order("display_name"),
     sb.from("checkins").select("user_id, beer_id"),
-    sb.from("invites").select("*").order("created_at", { ascending: false }),
   ]);
   const unique = {};
   for (const r of rows || []) (unique[r.user_id] ||= new Set()).add(r.beer_id);
-  const initial = n => esc((n || "?").trim()[0]?.toUpperCase() || "?");
 
   view().innerHTML = `
     <div class="stack">
@@ -1078,24 +1172,79 @@ async function renderFriends() {
               <span class="avatar">${initial(p.display_name)}</span>
               <span class="grow"><b>${esc(p.display_name || "Naamloos")}</b><br><span class="muted small">${unique[p.id]?.size || 0} unieke bieren</span></span>
             </a>`).join("")}
-        </div>` : `<p class="muted">Nog geen vrienden. Nodig iemand uit om elkaars bieren te zien.</p>`}
+        </div>` : `<p class="muted">Hier verschijnen andere gebruikers zodra ze een account hebben.</p>`}
+      ${state.me?.is_admin ? `<a class="btn ghost" href="#beheer">Iemand uitnodigen</a>` : ""}
+    </div>`;
+}
+
+// ---------------------------------------------------------------------
+// Beheer: uitnodigen en wachtwoorden resetten (alleen beheerders)
+// ---------------------------------------------------------------------
+function tempPassword() {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const arr = crypto.getRandomValues(new Uint32Array(10));
+  return [...arr].map(n => chars[n % chars.length]).join("");
+}
+
+async function renderAdmin() {
+  setTab("profiel");
+  if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
+  view().innerHTML = `<div class="loading">Gebruikers ophalen…</div>`;
+  const [{ data: users, error: uErr }, { data: invites }] = await Promise.all([
+    sb.rpc("admin_list_users"),
+    sb.from("invites").select("*").order("created_at", { ascending: false }),
+  ]);
+  const open = (invites || []).filter(i => !i.accepted_at);
+
+  view().innerHTML = `
+    <div class="stack">
+      <h1>Beheer</h1>
 
       <form class="panel stack" id="inviteForm">
-        <h2>Vriend uitnodigen</h2>
-        <p class="muted small">Na het uitnodigen opent je mailprogramma met een kant-en-klaar bericht. Je vriend maakt daarna een account met precies dit e-mailadres.</p>
-        <label class="field"><span>E-mailadres van je vriend</span><input class="input" type="email" name="email" required autocomplete="off"></label>
+        <h2>Iemand uitnodigen</h2>
+        <p class="muted small">Na het uitnodigen opent je mailprogramma met een kant-en-klaar bericht. De persoon maakt daarna een account met precies dit e-mailadres.</p>
+        <label class="field"><span>E-mailadres</span><input class="input" type="email" name="email" required autocomplete="off"></label>
         <button class="btn" type="submit">Uitnodigen</button>
       </form>
 
-      ${invites && invites.length ? `
-        <div>
-          <h3>Jouw uitnodigingen</h3>
-          ${invites.map(i => `
+      ${open.length ? `
+        <div class="panel">
+          <h2>Openstaande uitnodigingen</h2>
+          ${open.map(i => `
             <div class="checkin-item">
-              <div><b>${esc(i.email)}</b><br><span class="muted small">${i.accepted_at ? "Heeft een account gemaakt" : "Uitgenodigd op " + fmtDate(i.created_at)}</span></div>
-              ${i.accepted_at ? "" : `<button class="btn ghost small" data-revoke="${esc(i.email)}">Intrekken</button>`}
+              <div><b>${esc(i.email)}</b><br><span class="muted small">Uitgenodigd op ${fmtDate(i.created_at)}</span></div>
+              <button class="btn ghost small" data-revoke="${esc(i.email)}">Intrekken</button>
             </div>`).join("")}
         </div>` : ""}
+
+      <div class="panel">
+        <h2>Gebruikers</h2>
+        ${uErr ? `<p class="error">Gebruikers konden niet worden geladen: ${esc(uErr.message)}</p>` : (users || []).map(u => {
+          const me = u.id === state.user.id;
+          const name = esc(u.display_name || u.email);
+          return `
+          <div class="user-row">
+            <div class="user-info">
+              <span class="avatar">${initial(u.display_name)}</span>
+              <div>
+                <b>${esc(u.display_name || "Naamloos")}</b>${me ? ` <span class="muted small">(jij)</span>` : ""}<br>
+                <span class="muted small">${esc(u.email)}</span><br>
+                <span class="small ${u.is_blocked ? "error" : "muted"}">${u.is_blocked ? "Geblokkeerd" : u.last_sign_in_at ? "Laatst ingelogd " + fmtDate(u.last_sign_in_at) : "Nog niet ingelogd"}</span>
+              </div>
+            </div>
+            <label class="switch admin-switch">
+              <span>Beheerder</span>
+              <input type="checkbox" data-admin="${u.id}" ${u.is_admin ? "checked" : ""} ${u.is_blocked ? "disabled" : ""}>
+            </label>
+            ${me ? "" : `
+            <div class="user-actions">
+              <button class="btn ghost small" data-reset="${u.id}" data-name="${name}" ${u.is_blocked ? "disabled" : ""}>Wachtwoord resetten</button>
+              <button class="btn ghost small" data-block="${u.id}" data-blocked="${u.is_blocked}" data-name="${name}">${u.is_blocked ? "Deblokkeren" : "Blokkeren"}</button>
+              <button class="btn danger small" data-remove="${u.id}" data-name="${name}">Verwijderen</button>
+            </div>`}
+          </div>`;
+        }).join("")}
+      </div>
     </div>`;
 
   $("#inviteForm").onsubmit = async e => {
@@ -1105,19 +1254,125 @@ async function renderFriends() {
     const { error } = await sb.from("invites").insert({ email });
     if (error && error.code !== "23505") return toast("Uitnodigen lukte niet: " + error.message);
     const name = state.me?.display_name || "Ik";
-    const subject = "Kom je ook je bieren bijhouden?";
-    const body = `Hoi!\n\n${name} nodigt je uit voor de Bierlijst, waar we bijhouden welke bieren we drinken en elkaars lijsten kunnen zien.\n\nGa naar ${SITE_URL}, kies "Account maken" en gebruik dit e-mailadres: ${email}\n\nProost!`;
+    const subject = "Uitnodiging voor de Bierlijst";
+    const body = `Hoi!\n\n${name} nodigt je uit voor de Bierlijst.\n\nGa naar ${SITE_URL}, kies "Account maken" en gebruik dit e-mailadres: ${email}\n\nProost!`;
     location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     toast(`${email} is uitgenodigd`);
-    setTimeout(renderFriends, 600);
+    setTimeout(renderAdmin, 600);
   };
+
+  view().onchange = async e => {
+    const cb = e.target.closest("[data-admin]");
+    if (!cb) return;
+    cb.disabled = true;
+    const { error } = await sb.rpc("admin_set_admin", { target: cb.dataset.admin, make_admin: cb.checked });
+    if (error) { cb.checked = !cb.checked; cb.disabled = false; return toast(error.message); }
+    toast(cb.checked ? "Beheerder gemaakt" : "Geen beheerder meer");
+    if (cb.dataset.admin === state.user.id) { await loadMe(); location.hash = "profiel"; return; }
+    renderAdmin();
+  };
+
   view().onclick = async e => {
-    const b = e.target.closest("[data-revoke]");
-    if (!b) return;
-    const { error } = await sb.from("invites").delete().eq("email", b.dataset.revoke);
-    if (error) return toast("Intrekken lukte niet: " + error.message);
-    toast("Uitnodiging ingetrokken"); renderFriends();
+    const bl = e.target.closest("[data-block]");
+    if (bl) {
+      const block = bl.dataset.blocked !== "true";
+      if (block && !confirm(`${bl.dataset.name} blokkeren? Deze persoon kan dan niet meer inloggen. Gegevens blijven bewaard.`)) return;
+      bl.disabled = true;
+      const { error } = await sb.rpc("admin_set_blocked", { target: bl.dataset.block, blocked: block });
+      if (error) { bl.disabled = false; return toast(error.message); }
+      toast(block ? "Gebruiker geblokkeerd" : "Gebruiker gedeblokkeerd");
+      return renderAdmin();
+    }
+    const rm = e.target.closest("[data-remove]");
+    if (rm) {
+      if (!confirm(`${rm.dataset.name} definitief verwijderen? Alle check-ins en foto's van deze persoon worden gewist. Dit kan niet ongedaan worden gemaakt.`)) return;
+      rm.disabled = true;
+      try {
+        const id = rm.dataset.remove;
+        const { data: files } = await sb.storage.from("photos").list(id, { limit: 1000 });
+        if (files && files.length) await sb.storage.from("photos").remove(files.map(f => `${id}/${f.name}`));
+      } catch { /* foto's opruimen is een bonus; verwijderen gaat door */ }
+      const { error } = await sb.rpc("admin_delete_user", { target: rm.dataset.remove });
+      if (error) { rm.disabled = false; return toast(error.message); }
+      toast("Gebruiker verwijderd");
+      return renderAdmin();
+    }
+    const rv = e.target.closest("[data-revoke]");
+    if (rv) {
+      const { error } = await sb.from("invites").delete().eq("email", rv.dataset.revoke);
+      if (error) return toast("Intrekken lukte niet: " + error.message);
+      toast("Uitnodiging ingetrokken"); return renderAdmin();
+    }
+    const rs = e.target.closest("[data-reset]");
+    if (rs) {
+      const pw = tempPassword();
+      openDialog(`
+        <div class="stack">
+          <h2>Wachtwoord resetten</h2>
+          <p>Nieuw tijdelijk wachtwoord voor <b>${esc(rs.dataset.name)}</b>:</p>
+          <input class="input" id="tmpPw" value="${pw}" readonly style="font-size:1.3rem;font-weight:700;letter-spacing:.05em">
+          <p class="muted small">Geef dit wachtwoord door. Bij de volgende keer inloggen moet een nieuw wachtwoord worden gekozen.</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn" id="doReset" type="button">Wachtwoord instellen</button>
+            <button class="btn ghost" id="copyPw" type="button">Kopiëren</button>
+          </div>
+        </div>`);
+      $("#copyPw").onclick = async () => { try { await navigator.clipboard.writeText(pw); toast("Gekopieerd"); } catch { $("#tmpPw").select(); } };
+      $("#doReset").onclick = async () => {
+        $("#doReset").disabled = true;
+        const { error } = await sb.rpc("admin_set_password", { target: rs.dataset.reset, new_password: pw });
+        if (error) { $("#doReset").disabled = false; return toast("Resetten lukte niet: " + error.message); }
+        $("#doReset").textContent = "Ingesteld";
+        toast("Tijdelijk wachtwoord ingesteld");
+      };
+    }
   };
+}
+
+// ---------------------------------------------------------------------
+// Wachtwoord wijzigen
+// ---------------------------------------------------------------------
+function passwordForm(forced) {
+  return `
+    <form class="panel stack" id="pwForm">
+      <h2>${forced ? "Kies een nieuw wachtwoord" : "Wachtwoord wijzigen"}</h2>
+      ${forced ? `<p class="muted">Je bent ingelogd met een tijdelijk wachtwoord. Kies een eigen wachtwoord om verder te gaan.</p>` : ""}
+      ${forced ? "" : `<label class="field"><span>Huidig wachtwoord</span><input class="input" type="password" name="current" autocomplete="current-password" required></label>`}
+      <label class="field"><span>Nieuw wachtwoord</span><input class="input" type="password" name="pw1" minlength="8" autocomplete="new-password" required></label>
+      <label class="field"><span>Nieuw wachtwoord herhalen</span><input class="input" type="password" name="pw2" minlength="8" autocomplete="new-password" required></label>
+      <p class="error" id="pwErr" hidden></p>
+      <button class="btn" type="submit">Wachtwoord opslaan</button>
+    </form>`;
+}
+function bindPasswordForm(forced) {
+  $("#pwForm").onsubmit = async e => {
+    e.preventDefault();
+    const f = new FormData(e.target);
+    const err = $("#pwErr");
+    const btn = e.target.querySelector("button[type=submit]");
+    const fail = m => { err.textContent = m; err.hidden = false; btn.disabled = false; };
+    err.hidden = true; btn.disabled = true;
+    const pw1 = String(f.get("pw1")), pw2 = String(f.get("pw2"));
+    if (pw1.length < 8) return fail("Het nieuwe wachtwoord moet minstens 8 tekens hebben.");
+    if (pw1 !== pw2) return fail("De twee nieuwe wachtwoorden zijn niet gelijk.");
+    if (!forced) {
+      const { error } = await sb.auth.signInWithPassword({ email: state.user.email, password: String(f.get("current")) });
+      if (error) return fail("Je huidige wachtwoord klopt niet.");
+    }
+    const { error } = await sb.auth.updateUser({ password: pw1 });
+    if (error) return fail(/different|same/i.test(error.message) ? "Kies een ander wachtwoord dan je huidige." : "Opslaan lukte niet: " + error.message);
+    await sb.from("profiles").update({ must_change_password: false }).eq("id", state.user.id);
+    if (state.me) state.me.must_change_password = false;
+    toast("Wachtwoord gewijzigd");
+    if (forced) { location.hash = "lijst"; route(); } else e.target.reset(), (btn.disabled = false);
+  };
+}
+function renderForcedPassword() {
+  setTab(null);
+  $("#tabs").hidden = true;
+  view().innerHTML = `<div class="auth stack">${passwordForm(true)}<button class="btn ghost" id="logoutBtn2" type="button">Uitloggen</button></div>`;
+  bindPasswordForm(true);
+  $("#logoutBtn2").onclick = () => sb.auth.signOut();
 }
 
 // ---------------------------------------------------------------------
@@ -1152,6 +1407,15 @@ function renderProfile() {
           </div>
         </div>` : p.is_public ? `<p class="muted">Kies een gebruikersnaam om je openbare link te krijgen.</p>` : ""}
 
+      ${passwordForm(false)}
+
+      ${p.is_admin ? `
+        <div class="panel stack">
+          <h2>Beheer</h2>
+          <p class="muted small">Mensen uitnodigen en wachtwoorden resetten.</p>
+          <a class="btn soft" href="#beheer">Naar beheer</a>
+        </div>` : ""}
+
       <div class="panel stack">
         <h2>Exporteren</h2>
         <p class="muted small">Download al je check-ins met de biergegevens. CSV opent direct in Excel.</p>
@@ -1184,6 +1448,7 @@ function renderProfile() {
     try { await navigator.clipboard.writeText($("#pubLink").value); toast("Link gekopieerd"); }
     catch { $("#pubLink").select(); toast("Selecteer en kopieer de link"); }
   };
+  bindPasswordForm(false);
   $("#csvBtn").onclick = () => exportData("csv");
   $("#jsonBtn").onclick = () => exportData("json");
   $("#logoutBtn").onclick = async () => { await sb.auth.signOut(); };
@@ -1237,15 +1502,19 @@ const params = new URLSearchParams(location.search);
 const publicUser = params.get("u");
 
 async function route() {
+  view().onclick = null;
+  view().onchange = null;
   if (location.hash !== "#inchecken") stopScanner();
   if (publicUser && (!location.hash || location.hash === "#")) return renderPublic(publicUser);
   if (!state.user) return renderAuth();
+  if (state.me?.must_change_password) return renderForcedPassword();
   $("#tabs").hidden = false;
   $("#topRight").innerHTML = "";
   const h = location.hash.slice(1) || "lijst";
   if (h === "inchecken") return renderCheckin();
   if (h === "vrienden") return renderFriends();
   if (h === "profiel") return renderProfile();
+  if (h === "beheer") return renderAdmin();
   if (h.startsWith("u/")) return renderUser(h.slice(2));
   return renderMine();
 }
