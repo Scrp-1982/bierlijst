@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <style>
 :root {
   --paper: #F3F5EF;
@@ -245,8 +245,13 @@ textarea.input { min-height: 92px; resize: vertical; }
 .result:hover { border-color: var(--hop); }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-#reader { border-radius: var(--radius-lg); overflow: hidden; background: #000; }
-#reader video { width: 100% !important; }
+#reader { position: relative; border-radius: var(--radius-lg); overflow: hidden; background: #000; aspect-ratio: 1; }
+#reader video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-frame {
+  position: absolute; left: 50%; top: 50%; width: 72%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  border: 3px solid rgba(255, 255, 255, 0.9); border-radius: 18px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35);
+}
 .rating-row { display: flex; align-items: center; gap: 14px; }
 .rating-row input[type=range] { flex: 1; accent-color: var(--gold); height: 32px; }
 .rating-row output { font: 800 1.4rem var(--display); min-width: 3.2ch; text-align: right; }
@@ -426,6 +431,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
+const APP_VERSION = "2026-10-21.6";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -560,13 +566,26 @@ function closeDialog() { $("#dlg").close(); }
 $("#dlgClose").addEventListener("click", closeDialog);
 $("#dlg").addEventListener("click", e => { if (e.target.id === "dlg") closeDialog(); });
 
+// Afbeelding openen, ook op browsers die niet alle opties ondersteunen
+async function loadBitmap(file) {
+  try { return await createImageBitmap(file, { imageOrientation: "from-image" }); } catch {}
+  try { return await createImageBitmap(file); } catch {}
+  return await new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Deze afbeelding kan niet worden geopend.")); };
+    img.src = url;
+  });
+}
+
 // Foto verkleinen: maximaal 250 kB per foto, zodat de gratis opslag lang meegaat
 const MAX_PHOTO_BYTES = 250 * 1024;
 function canvasBlob(canvas, quality) {
   return new Promise(res => canvas.toBlob(res, "image/jpeg", quality));
 }
 async function compressImage(file) {
-  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const bmp = await loadBitmap(file);
   const steps = [[1600, 0.82], [1600, 0.72], [1400, 0.7], [1200, 0.68], [1024, 0.65], [900, 0.6], [800, 0.55]];
   let blob;
   for (const [max, q] of steps) {
@@ -584,7 +603,7 @@ async function compressImage(file) {
 }
 // Profielfoto: vierkant bijgesneden, 400 x 400 pixels
 async function compressAvatar(file) {
-  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const bmp = await loadBitmap(file);
   const side = Math.min(bmp.width, bmp.height);
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 400;
@@ -1079,8 +1098,14 @@ async function searchOFF(q) {
     tagtype_0: "categories", tag_contains_0: "contains", tag_0: "en:beers",
     fields: "code,product_name,product_name_nl,product_name_en,brands,nutriments,countries,image_front_url",
   });
-  const r = await fetch(url);
-  if (!r.ok) throw new Error("Open Food Facts reageert niet");
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  let r;
+  try { r = await fetch(url, { signal: ctrl.signal }); }
+  catch (ex) { throw new Error(ex.name === "AbortError" ? "Open Food Facts reageert te traag. Probeer het zo nog eens." : "Open Food Facts is niet bereikbaar (" + (ex.message || ex) + ")."); }
+  finally { clearTimeout(t); }
+  if (r.status === 429) throw new Error("Open Food Facts vraagt om even te wachten. Probeer het over een minuut opnieuw.");
+  if (!r.ok) throw new Error("Open Food Facts gaf een fout (code " + r.status + ").");
   const j = await r.json();
   return (j.products || []).filter(p => p.product_name || p.product_name_nl || p.product_name_en);
 }
@@ -1096,12 +1121,82 @@ async function lookupBarcode(code) {
   return { prefill: { barcode: code } };
 }
 
-async function stopScanner() {
-  if (state.scanner) {
-    try { await state.scanner.stop(); } catch {}
-    try { state.scanner.clear(); } catch {}
-    state.scanner = null;
+// Barcodelezer: leest EAN/UPC-barcodes horizontaal én verticaal
+const BarcodeScan = (() => {
+  let reader = null;
+  function getReader() {
+    if (!reader) {
+      const F = ZXing.BarcodeFormat, H = new Map();
+      H.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E]);
+      H.set(ZXing.DecodeHintType.TRY_HARDER, true);
+      reader = new ZXing.MultiFormatReader();
+      reader.setHints(H);
+    }
+    return reader;
   }
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+  // Tekent een uitsnede van de bron (video of afbeelding), eventueel 90 graden gedraaid
+  function draw(src, sx, sy, sw, sh, maxSide, rotate) {
+    const scale = Math.min(1, maxSide / Math.max(sw, sh));
+    const w = Math.round(sw * scale), h = Math.round(sh * scale);
+    canvas.width = rotate ? h : w;
+    canvas.height = rotate ? w : h;
+    ctx.save();
+    if (rotate) { ctx.translate(h, 0); ctx.rotate(Math.PI / 2); }
+    ctx.drawImage(src, sx, sy, sw, sh, 0, 0, w, h);
+    ctx.restore();
+  }
+  function decodeCanvas() {
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const lum = new Uint8ClampedArray(canvas.width * canvas.height);
+    for (let i = 0, j = 0; i < data.length; i += 4, j++) lum[j] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8;
+    const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.RGBLuminanceSource(lum, canvas.width, canvas.height)));
+    try { return getReader().decodeWithState(bmp).getText(); }
+    catch { return null; } finally { getReader().reset(); }
+  }
+  function tryRegion(src, sx, sy, sw, sh, maxSide, rotations) {
+    for (const r of rotations) {
+      draw(src, sx, sy, sw, sh, maxSide, r);
+      const code = decodeCanvas();
+      if (code) return code;
+    }
+    return null;
+  }
+  // Foto: hele beeld en het midden, recht en gedraaid
+  async function fromFile(file) {
+    const bmp = await loadBitmap(file);
+    const W = bmp.width, H = bmp.height;
+    const crop = c => [W * (1 - c) / 2, H * (1 - c) / 2, W * c, H * c];
+    const code =
+      tryRegion(bmp, 0, 0, W, H, 1800, [false, true]) ||
+      tryRegion(bmp, ...crop(0.6), 1400, [false, true]) ||
+      tryRegion(bmp, ...crop(0.35), 1000, [false, true]) ||
+      tryRegion(bmp, 0, 0, W, H, 1000, [false, true]);
+    bmp.close?.();
+    return code;
+  }
+  // Live camerabeeld: midden van het beeld, afwisselend recht en gedraaid
+  let frame = 0;
+  function fromVideo(video) {
+    const W = video.videoWidth, H = video.videoHeight;
+    if (!W || !H) return null;
+    const side = Math.min(W, H) * 0.75;
+    frame++;
+    return tryRegion(video, (W - side) / 2, (H - side) / 2, side, side, 1000, [frame % 2 === 1]);
+  }
+  return { fromFile, fromVideo };
+})();
+
+async function stopScanner() {
+  const sc = state.scanner;
+  if (!sc) return;
+  state.scanner = null;
+  clearTimeout(sc.timer);
+  sc.stream?.getTracks().forEach(t => t.stop());
+  const r = $("#reader");
+  if (r) { r.innerHTML = ""; r.hidden = true; }
 }
 
 function renderCheckin() {
@@ -1117,7 +1212,6 @@ function renderCheckin() {
         Barcode scannen
       </button>
       <div id="reader" hidden></div>
-      <div id="readerFile" hidden></div>
       <p class="small" id="scanMsg" hidden></p>
       <label class="btn soft block" style="cursor:pointer">
         <input type="file" accept="image/*" capture="environment" id="barcodePhoto" hidden>
@@ -1192,55 +1286,79 @@ function renderCheckin() {
     $("#barcodePhoto").onchange = async e => {
       const file = e.target.files[0];
       if (!file) return;
-      if (typeof Html5Qrcode === "undefined") return toast("De scanner kon niet worden geladen. Ververs de pagina.");
+      if (typeof ZXing === "undefined") return toast("De scanner kon niet worden geladen. Ververs de pagina.");
       const msg = $("#scanMsg");
       msg.hidden = false; msg.textContent = "Barcode zoeken in de foto…";
       await stopScanner();
-      const F = Html5QrcodeSupportedFormats;
-      const reader = new Html5Qrcode("readerFile", { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose: false });
       try {
-        const code = await reader.scanFile(file, false);
-        await handleBarcode(code);
+        const code = await BarcodeScan.fromFile(file);
+        if (code) await handleBarcode(code);
+        else msg.textContent = "Geen barcode gevonden in de foto. Zorg dat de barcode scherp en goed belicht in beeld is, en probeer het opnieuw.";
       } catch {
-        msg.textContent = "Geen barcode gevonden in de foto. Zorg dat de barcode scherp, recht en goed belicht in beeld is, en probeer het opnieuw.";
+        msg.textContent = "De foto kon niet worden gelezen. Probeer het opnieuw.";
       } finally {
-        try { reader.clear(); } catch {}
         e.target.value = "";
       }
     };
     $("#newBtn").onclick = () => { stopScanner(); state.draft = { prefill: { name: $("#beerSearch").value.trim() } }; renderCheckin(); };
-    let timer, seq = 0;
-    $("#beerSearch").oninput = e => {
-      clearTimeout(timer);
-      const q = e.target.value.trim().replace(/[,()%*\\]/g, " ").trim();
+    let timer, seq = 0, own = [], ext = [], offState = "idle", offMsg = "";
+    const item = (attrs, title, sub) => `
+      <button type="button" class="result" ${attrs}>
+        <span><b>${esc(title)}</b><br><span class="muted small">${esc(sub)}</span></span>
+        <span class="muted small">Kies</span>
+      </button>`;
+    const cleanQ = () => $("#beerSearch").value.trim().replace(/[,()%*\\]/g, " ").trim();
+    const draw = () => {
+      const q = cleanQ();
       if (q.length < 2) { $("#results").innerHTML = ""; return; }
-      timer = setTimeout(async () => {
-        const my = ++seq;
-        $("#results").innerHTML = `<p class="muted small">Zoeken…</p>`;
-        const [own, off] = await Promise.all([
-          sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8).then(r => r.data || []),
-          q.length >= 3 ? searchOFF(q).catch(() => null) : Promise.resolve([]),
-        ]);
-        if (my !== seq) return;
+      $("#results").innerHTML =
+        (own.length ? `<p class="small muted">In jullie lijst</p>` + own.map(b => item(`data-id="${b.id}"`, b.name, [b.brewery, b.style].filter(Boolean).join(", "))).join("")
+                    : `<p class="small muted">Niet gevonden in jullie lijst.</p>`) +
+        (offState === "loading" ? `<p class="small muted" style="margin-top:6px">Zoeken in Open Food Facts…</p>` : "") +
+        (offState === "done" ? (ext.length
+            ? `<p class="small muted" style="margin-top:6px">Uit Open Food Facts</p>` + ext.map((p, i) => item(`data-off="${i}"`, p.product_name || p.product_name_nl || p.product_name_en, (p.brands || "").split(",")[0])).join("")
+            : `<p class="small muted" style="margin-top:6px">Ook niet gevonden in Open Food Facts. Voeg het toe als nieuw bier.</p>`) : "") +
+        (offState === "error" ? `<p class="small error" style="margin-top:6px">${esc(offMsg)}</p>` : "") +
+        (offState !== "loading" && offState !== "done" ? `<button type="button" class="btn soft small" id="offBtn" style="margin-top:8px">Zoek in Open Food Facts</button>` : "");
+    };
+    const runOff = async () => {
+      const q = cleanQ();
+      if (q.length < 3) return toast("Typ minstens 3 letters.");
+      const my = ++seq;
+      offState = "loading"; draw();
+      try {
         const known = new Set(own.map(b => b.barcode).filter(Boolean));
-        const ext = (off || []).filter(p => !known.has(p.code));
-        const item = (attrs, title, sub) => `
-          <button type="button" class="result" ${attrs}>
-            <span><b>${esc(title)}</b><br><span class="muted small">${esc(sub)}</span></span>
-            <span class="muted small">Kies</span>
-          </button>`;
-        $("#results").innerHTML =
-          (own.length ? `<p class="small muted">In jullie lijst</p>` + own.map(b => item(`data-id="${b.id}"`, b.name, [b.brewery, b.style].filter(Boolean).join(", "))).join("") : "") +
-          (ext.length ? `<p class="small muted" style="margin-top:6px">Uit Open Food Facts</p>` + ext.map((p, i) => item(`data-off="${i}"`, p.product_name || p.product_name_nl || p.product_name_en, (p.brands || "").split(",")[0])).join("") : "") +
-          (!own.length && !ext.length ? `<p class="muted small">${off === null ? "Open Food Facts is nu niet bereikbaar. " : ""}Niets gevonden. Voeg het toe als nieuw bier.</p>` : "");
-        $("#results").onclick = ev => {
-          const r = ev.target.closest("[data-id], [data-off]");
-          if (!r) return;
-          stopScanner();
-          state.draft = r.dataset.id ? { beer: own.find(x => x.id === r.dataset.id) } : { prefill: offToPrefill(ext[Number(r.dataset.off)]) };
-          renderCheckin();
-        };
-      }, 400);
+        const res = await searchOFF(q);
+        if (my !== seq) return;
+        ext = res.filter(p => !known.has(p.code));
+        offState = "done";
+      } catch (ex) {
+        if (my !== seq) return;
+        offState = "error"; offMsg = ex.message;
+      }
+      draw();
+    };
+    $("#beerSearch").oninput = () => {
+      clearTimeout(timer);
+      seq++; offState = "idle"; ext = [];
+      const q = cleanQ();
+      if (q.length < 2) { own = []; draw(); return; }
+      timer = setTimeout(async () => {
+        const my = seq;
+        const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8);
+        if (my !== seq) return;
+        own = data || [];
+        draw();
+      }, 300);
+    };
+    $("#beerSearch").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); runOff(); } };
+    $("#results").onclick = ev => {
+      if (ev.target.closest("#offBtn")) return runOff();
+      const r = ev.target.closest("[data-id], [data-off]");
+      if (!r) return;
+      stopScanner();
+      state.draft = r.dataset.id ? { beer: own.find(x => x.id === r.dataset.id) } : { prefill: offToPrefill(ext[Number(r.dataset.off)]) };
+      renderCheckin();
     };
     return;
   }
@@ -1339,41 +1457,53 @@ async function handleBarcode(code) {
 
 async function startScan() {
   const reader = $("#reader"), msg = $("#scanMsg"), btn = $("#scanBtn");
-  if (typeof Html5Qrcode === "undefined") {
+  if (typeof ZXing === "undefined") {
     msg.hidden = false;
     msg.textContent = "De scanner kon niet worden geladen. Controleer je internetverbinding en ververs de pagina.";
     return;
   }
-  if (state.scanner) { await stopScanner(); reader.hidden = true; btn.lastChild.textContent = " Barcode scannen"; return; }
-  reader.hidden = false; msg.hidden = false;
-  msg.textContent = "Richt de camera op de barcode van het flesje of blikje.";
+  if (state.scanner) { await stopScanner(); btn.lastChild.textContent = " Barcode scannen"; msg.hidden = true; return; }
+
+  msg.hidden = false;
+  msg.textContent = "Houd de barcode in het kader. Recht of rechtop maakt niet uit.";
   btn.lastChild.textContent = " Stoppen met scannen";
-  const F = Html5QrcodeSupportedFormats;
-  state.scanner = new Html5Qrcode("reader", {
-    formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E],
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-    verbose: false,
-  });
+  reader.hidden = false;
+  reader.innerHTML = `<video playsinline muted autoplay></video><div class="scan-frame" aria-hidden="true"></div>`;
+  const video = reader.querySelector("video");
+
   try {
-    await state.scanner.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: (w, h) => ({ width: Math.min(300, w * 0.85), height: Math.min(140, h * 0.5) }) },
-      async code => {
-        await stopScanner();
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error("insecure");
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+    state.scanner = { stream, timer: null };
+    video.srcObject = stream;
+    await video.play();
+
+    const tick = async () => {
+      if (!state.scanner) return;
+      let code = null;
+      try { code = BarcodeScan.fromVideo(video); } catch {}
+      if (code) {
         if (navigator.vibrate) navigator.vibrate(60);
+        await stopScanner();
+        btn.lastChild.textContent = " Barcode scannen";
         await handleBarcode(code);
+        return;
       }
-    );
+      state.scanner.timer = setTimeout(tick, 90);
+    };
+    tick();
   } catch (ex) {
     await stopScanner();
-    reader.hidden = true;
     btn.lastChild.textContent = " Barcode scannen";
     const t = String(ex?.name || ex?.message || ex);
     msg.textContent =
-      !window.isSecureContext ? "De camera werkt alleen via een https-adres. Open de app via https://." :
-      /NotAllowed|Permission/i.test(t) ? "De browser heeft geen toestemming voor de camera. Sta de camera toe in de instellingen van je browser, of gebruik de knop 'Foto van de barcode maken'." :
-      /NotFound|DevicesNotFound|no camera/i.test(t) ? "Er is geen camera gevonden op dit apparaat. Gebruik een telefoon, of zoek het bier op naam." :
-      /NotReadable|TrackStart|in use/i.test(t) ? "De camera is in gebruik door een andere app. Sluit die app en probeer het opnieuw." :
+      /insecure/.test(t) || !window.isSecureContext ? "De camera werkt alleen via een https-adres. Open de app via https://." :
+      /NotAllowed|Permission/i.test(t) ? "De browser heeft geen toestemming voor de camera. Op een iPhone: Instellingen, Safari, Camera, kies Sta toe. Of gebruik de knop 'Foto van de barcode maken'." :
+      /NotFound|Overconstrained/i.test(t) ? "Er is geen camera gevonden op dit apparaat. Gebruik een telefoon, of zoek het bier op naam." :
+      /NotReadable|in use/i.test(t) ? "De camera is in gebruik door een andere app. Sluit die app en probeer het opnieuw." :
       `De camera kon niet worden gestart (${t}). Gebruik de knop 'Foto van de barcode maken', of zoek het bier op naam.`;
   }
 }
@@ -1955,6 +2085,7 @@ function renderProfile() {
       </div>
 
       <button class="btn ghost" id="logoutBtn" type="button">Uitloggen</button>
+      <p class="muted small" style="text-align:center">Versie ${APP_VERSION}</p>
     </div>`;
 
   $("#profileForm").onsubmit = async e => {
