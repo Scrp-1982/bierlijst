@@ -338,6 +338,10 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 .friend-line .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .friend-score { display: flex; align-items: center; gap: 6px; flex: none; }
 .linkish { appearance: none; border: 0; background: none; padding: 0; color: var(--hop); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.code-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.code-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-weight: 600; font-variant-numeric: tabular-nums; }
+.code-chip button { appearance: none; border: 0; background: transparent; color: var(--muted); font-size: 1.1rem; line-height: 1; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; }
+.code-chip button:hover { background: var(--hop-soft); color: var(--danger); }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -637,7 +641,7 @@ dialog.lightbox img {
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.23";
+const APP_VERSION = "2026-10-22.24";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -766,10 +770,8 @@ function canEditAll(beer) {
 }
 function editLabel(b) {
   if (canEditAll(b)) return b.barcode && b.style && b.abv != null ? "Gegevens bewerken" : "Gegevens aanvullen";
-  if (!b.barcode && !b.image_path) return "Foto of barcode toevoegen";
-  if (!b.barcode) return "Barcode toevoegen";
-  if (!b.image_path) return "Foto toevoegen";
-  return null;
+  // Een (extra) barcode kan iedereen altijd toevoegen, bijvoorbeeld voor het blikje naast het flesje
+  return b.image_path ? "Barcode toevoegen" : "Foto of barcode toevoegen";
 }
 
 // Thuis drinken: vaste naam, nooit met coördinaten (privacy)
@@ -1202,7 +1204,7 @@ async function showBeer(g, { own }) {
         ${fact("Stijl", b.style)}
         ${fact("Alcohol", b.abv != null ? nf(b.abv) + "%" : null)}
         ${fact("Land", b.country)}
-        ${fact("Barcode", b.barcode)}
+        ${codesFact(b)}
       </dl>
       ${b.description ? `<p>${esc(b.description)}</p>` : ""}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1216,6 +1218,7 @@ async function showBeer(g, { own }) {
       <div id="othersBox"></div>
     </div>`);
 
+  fillCodesFact(b.id);
   const again = $("#againBtn");
   if (again) again.onclick = () => { state.draft = { beer: b }; closeDialog(); location.hash = "inchecken"; if (location.hash === "#inchecken") route(); };
   const edit = $("#editBtn");
@@ -1349,8 +1352,8 @@ function beerFields(b = {}, opts = {}) {
     <label class="field"><span>Barcode</span><input class="input" name="barcode" inputmode="numeric" autocomplete="off" placeholder="De cijfers onder de streepjes" value="${esc(b.barcode)}"></label>
     <p class="muted small" style="margin-top:-8px">Optioneel. Met een barcode herkent de app dit bier voortaan bij het scannen.</p>` : ""}
     <div class="grid2">
-      <label class="field"><span>Brouwerij</span><input class="input" name="brewery" value="${esc(b.brewery)}"></label>
-      <label class="field"><span>Stijl</span><input class="input" name="style" list="styleList" value="${esc(b.style)}" placeholder="Bijv. Tripel"></label>
+      <label class="field"><span>Brouwerij</span><input class="input" name="brewery" list="breweryList" autocomplete="off" value="${esc(b.brewery)}"></label>
+      <label class="field"><span>Stijl</span><input class="input" name="style" list="styleList" autocomplete="off" value="${esc(b.style)}" placeholder="Bijv. Tripel"></label>
     </div>
     <div class="grid2">
       <label class="field"><span>Alcohol %</span><input class="input" name="abv" type="number" step="0.1" min="0" max="70" inputmode="decimal" value="${esc(b.abv)}"></label>
@@ -1358,9 +1361,32 @@ function beerFields(b = {}, opts = {}) {
     </div>
     <label class="field"><span>Omschrijving</span><textarea class="input" name="description">${esc(b.description)}</textarea></label>
     <datalist id="countryList">${COUNTRIES.map(c => `<option value="${c[1]}">`).join("")}</datalist>
+    <datalist id="breweryList"></datalist>
     <datalist id="styleList">
       ${["Pils", "Lager", "Blond", "Witbier", "Weizen", "Tripel", "Dubbel", "Quadrupel", "IPA", "Double IPA", "NEIPA", "Pale Ale", "Saison", "Amber", "Bock", "Stout", "Imperial Stout", "Porter", "Kriek", "Geuze", "Sour", "Alcoholvrij"].map(s => `<option value="${s}">`).join("")}
-    </datalist>`;
+    </datalist>
+    ${(setTimeout(fillSuggestionLists), "")}`;
+}
+
+// Suggesties tijdens het typen: brouwerijen en stijlen die al in de database staan
+let _suggest = { at: 0, data: null, loading: null };
+async function loadSuggestions() {
+  if (_suggest.data && Date.now() - _suggest.at < 10 * 60000) return _suggest.data;
+  _suggest.loading ||= sb.rpc("beer_suggestions").then(({ data }) => {
+    _suggest = { at: Date.now(), data: data || { breweries: [], styles: [] }, loading: null };
+    return _suggest.data;
+  }).catch(() => { _suggest.loading = null; return { breweries: [], styles: [] }; });
+  return _suggest.loading;
+}
+async function fillSuggestionLists() {
+  const bl = $("#breweryList"), sl = $("#styleList");
+  if (!bl && !sl) return;
+  const data = await loadSuggestions();
+  if (bl && !bl.childElementCount) bl.innerHTML = (data.breweries || []).map(v => `<option value="${esc(v)}">`).join("");
+  if (sl) {
+    const have = new Set([...sl.options].map(o => o.value.toLowerCase()));
+    sl.insertAdjacentHTML("beforeend", (data.styles || []).filter(v => !have.has(v.toLowerCase())).map(v => `<option value="${esc(v)}">`).join(""));
+  }
 }
 function readBeerFields(f) {
   const num = v => (v === "" || v == null ? null : Number(String(v).replace(",", ".")));
@@ -1423,8 +1449,39 @@ async function searchOFF(q) {
   return (j.products || []).filter(p => p.product_name || p.product_name_nl || p.product_name_en);
 }
 
+// Een bier kan meerdere barcodes hebben (fles, blik, multipack)
+async function findBeerByCode(code) {
+  const { data } = await sb.from("beer_barcodes").select("beer:beers(*)").eq("code", code).maybeSingle();
+  if (data?.beer) return data.beer;
+  const { data: b } = await sb.from("beers").select("*").eq("barcode", code).maybeSingle();
+  return b || null;
+}
+async function codesOf(beerId) {
+  const { data } = await sb.from("beer_barcodes").select("code, created_at").eq("beer_id", beerId).order("created_at");
+  return (data || []).map(r => r.code);
+}
+async function fetchAllCodes() {
+  const map = new Map();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from("beer_barcodes").select("code, beer_id").order("created_at").range(from, from + 999);
+    if (error) break;
+    for (const r of data) { if (!map.has(r.beer_id)) map.set(r.beer_id, []); map.get(r.beer_id).push(r.code); }
+    if (data.length < 1000) break;
+  }
+  return map;
+}
+function codesFact(b) {
+  return `<div><dt>Barcodes</dt><dd data-codes="${b.id}">${esc(b.barcode || "Nog geen")}</dd></div>`;
+}
+async function fillCodesFact(beerId) {
+  const el = document.querySelector(`[data-codes="${beerId}"]`);
+  if (!el) return;
+  const list = await codesOf(beerId);
+  if (list.length) el.textContent = list.join(", ");
+}
+
 async function lookupBarcode(code) {
-  const { data } = await sb.from("beers").select("*").eq("barcode", code).maybeSingle();
+  const data = await findBeerByCode(code);
   if (data) return { beer: data };
 
   // 1. Alle bronnen tegelijk via de Edge Function in Supabase
@@ -2565,10 +2622,10 @@ const CSV_COLS = ["naam", "brouwerij", "stijl", "alcohol", "land", "barcode", "o
 async function exportDatabase() {
   toast("Database ophalen…");
   try {
-    const beers = await fetchAllBeers();
+    const [beers, codes] = await Promise.all([fetchAllBeers(), fetchAllCodes()]);
     const rows = beers.map(b => ({
       naam: b.name, brouwerij: b.brewery, stijl: b.style, alcohol: b.abv,
-      land: b.country, barcode: b.barcode, omschrijving: b.description, foto: photoUrl(b.image_path),
+      land: b.country, barcode: (codes.get(b.id) || (b.barcode ? [b.barcode] : [])).join(" | "), omschrijving: b.description, foto: photoUrl(b.image_path),
     }));
     const name = `bierdatabase-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-")}.csv`;
     downloadCsv(rows, CSV_COLS, name);
@@ -2590,16 +2647,18 @@ const MISSING_FIELDS = [
   ["foto", "Foto", b => !b.image_path],
   ["omschrijving", "Omschrijving", b => !b.description],
 ];
-const ADMIN_CSV_COLS = ["id", ...CSV_COLS, "ontbreekt", "toegevoegd_door", "toegevoegd_op", "gewijzigd_door", "gewijzigd_op"];
+const ADMIN_CSV_COLS = ["id", ...CSV_COLS, "bron", "untappd_id", "ontbreekt", "toegevoegd_door", "toegevoegd_op", "gewijzigd_door", "gewijzigd_op"];
+const SOURCE_NL = { manual: "zelf toegevoegd", csv: "csv-import", untappd: "untappd", "Open Food Facts": "open food facts", openfoodfacts: "open food facts" };
 
 async function openExportDialog() {
   if (!state.me?.is_admin) return exportDatabase();
   openDialog(`<div class="loading">Database ophalen…</div>`);
-  let beers, people;
+  let beers, people, codes;
   try {
-    [beers, { data: people }] = await Promise.all([
+    [beers, { data: people }, codes] = await Promise.all([
       fetchAllBeers(),
       sb.from("profiles").select("id, display_name").order("display_name"),
+      fetchAllCodes(),
     ]);
   } catch (err) {
     $("#dlgBody").innerHTML = `<p class="error">Laden lukte niet: ${esc(err.message)}</p>`;
@@ -2618,7 +2677,8 @@ async function openExportDialog() {
   const download = (list, suffix) => {
     const rows = list.map(b => ({
       id: b.id, naam: b.name, brouwerij: b.brewery, stijl: b.style, alcohol: b.abv,
-      land: b.country, barcode: b.barcode, omschrijving: b.description, foto: photoUrl(b.image_path),
+      land: b.country, barcode: (codes.get(b.id) || (b.barcode ? [b.barcode] : [])).join(" | "), omschrijving: b.description, foto: photoUrl(b.image_path),
+      bron: SOURCE_NL[b.source] || b.source || "", untappd_id: b.untappd_id || "",
       ontbreekt: missingOf(b).join(", "),
       toegevoegd_door: b.created_by ? (nameOf[b.created_by] || "Verwijderde gebruiker") : "",
       toegevoegd_op: b.created_at ? b.created_at.slice(0, 10) : "",
@@ -2724,26 +2784,32 @@ async function readCsvFile(file) {
   return { rows: res.data, headers: res.meta.fields || [] };
 }
 
+function badCodeReason(raw, digits) {
+  return /e\+/i.test(raw) ? "Excel heeft er een wetenschappelijk getal van gemaakt; de laatste cijfers zijn verloren"
+    : ![8, 12, 13, 14].includes(digits.length) ? `heeft ${digits.length} cijfers, een barcode heeft er 8, 12, 13 of 14`
+    : "het controlecijfer klopt niet, waarschijnlijk een tikfout";
+}
+
 function rowToBeer(r, map) {
   const get = f => (map[f] ? String(r[map[f]] ?? "").trim() : "");
   const num = v => { const n = parseFloat(String(v).replace(",", ".").replace(/[^\d.]/g, "")); return isNaN(n) ? null : n; };
   const name = get("name");
   if (!name) return { skip: "geen naam" };
-  const rawCode = get("barcode");
-  let barcode = cleanBarcode(rawCode);
-  let badCode = null;
-  if (barcode && !validBarcode(barcode)) {
-    // Excel laat voorloopnullen weg: probeer ze terug te zetten
-    const fixed = [12, 13, 14].map(n => barcode.padStart(n, "0")).find(validBarcode);
-    if (fixed) barcode = fixed;
-    else {
-      badCode = {
-        raw: rawCode,
-        reason: /e\+/i.test(rawCode) ? "Excel heeft er een wetenschappelijk getal van gemaakt; de laatste cijfers zijn verloren"
-          : ![8, 12, 13, 14].includes(barcode.length) ? `heeft ${barcode.length} cijfers, een barcode heeft er 8, 12, 13 of 14`
-          : "het controlecijfer klopt niet, waarschijnlijk een tikfout",
-      };
-      barcode = "";
+
+  // Eén cel kan meerdere barcodes bevatten: "8714800037761 | 8714800037778"
+  const codes = [], bad = [];
+  for (const part of get("barcode").split(/[|;,\/]/).map(x => x.trim()).filter(Boolean)) {
+    const whole = cleanBarcode(part);
+    const pieces = validBarcode(whole) || !/\s/.test(part) ? [part] : part.split(/\s+/);
+    for (const piece of pieces) {
+      let c = cleanBarcode(piece);
+      if (!c) continue;
+      if (!validBarcode(c)) {
+        const fixed = [12, 13, 14].map(n => c.padStart(n, "0")).find(validBarcode);
+        if (fixed) c = fixed;
+        else { bad.push({ raw: piece, reason: badCodeReason(piece, c) }); continue; }
+      }
+      if (!codes.includes(c)) codes.push(c);
     }
   }
   const abv = num(get("abv"));
@@ -2751,27 +2817,34 @@ function rowToBeer(r, map) {
   const img = get("image");
   const id = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(get("id")) ? get("id").toLowerCase() : null;
   return {
-    id,
+    id, codes, bad,
     beer: {
       name: name.slice(0, 200),
       brewery: get("brewery") || null,
       style: get("style") || null,
       abv: abv != null && abv >= 0 && abv <= 70 ? abv : null,
       country: ct ? ct.name : null,
-      barcode: barcode || null,
+      barcode: codes[0] || null,
       description: get("description") || null,
       image_path: /^https:\/\//.test(img) ? img : null,
     },
-    badCode,
   };
 }
+
+const MERGE_KEEP = ["houden_id", "houden", "behouden_id", "behouden", "keep_id", "keep"];
+const MERGE_REMOVE = ["samenvoegen_id", "samenvoegen", "verwijderen_id", "dubbel_id", "remove_id", "remove"];
+const isUuid = v => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || "").trim());
 
 function openImportDialog() {
   openDialog(`
     <div class="stack">
       <h2>CSV importeren</h2>
-      <p>Kies een CSV-bestand met bieren. De app herkent kolommen als naam, brouwerij, stijl, alcohol, land, barcode en omschrijving, ook in het Engels of uit een Untappd-export.</p>
-      <p class="muted small">Je ziet eerst een voorbeeld; er wordt pas iets opgeslagen als je op Importeren klikt.</p>
+      <p>Kies een CSV-bestand. De app herkent zelf wat voor bestand het is:</p>
+      <ul class="import-sum">
+        <li><b>Bieren</b>, met kolommen als naam, brouwerij, stijl, alcohol, land, barcode en omschrijving (ook in het Engels of uit een Untappd-export). Met een kolom <b>id</b> herkent de app elk bestaand bier precies.</li>
+        <li><b>Samenvoegen</b>, met de kolommen <b>houden_id</b> en <b>samenvoegen_id</b>: het tweede bier gaat op in het eerste, met check-ins en barcodes.</li>
+      </ul>
+      <p class="muted small">Je ziet eerst een overzicht; er wordt pas iets opgeslagen als je bevestigt.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <label class="btn" style="cursor:pointer"><input type="file" accept=".csv,text/csv" id="csvFile" hidden>CSV-bestand kiezen</label>
         <button class="btn ghost" type="button" id="csvTemplate">Voorbeeldbestand downloaden</button>
@@ -2781,162 +2854,298 @@ function openImportDialog() {
   $("#csvTemplate").onclick = downloadTemplate;
   $("#csvFile").onchange = async e => {
     const file = e.target.files[0];
+    e.target.value = "";
     if (!file) return;
     const box = $("#csvResult");
     box.innerHTML = `<p class="muted">Bestand lezen en vergelijken met de database…</p>`;
     try {
       if (typeof Papa === "undefined") throw new Error("De CSV-lezer kon niet worden geladen. Ververs de pagina.");
       const { rows, headers } = await readCsvFile(file);
-      const map = mapColumns(headers);
-      if (!map.name) {
-        box.innerHTML = `<p class="error">Er is geen kolom met de naam van het bier gevonden. Gevonden kolommen: ${esc(headers.join(", "))}. Noem de kolom bijvoorbeeld “naam”.</p>`;
-        return;
-      }
-      const existing = await fetchAllBeers();
-      const byCode = new Map(existing.filter(b => b.barcode).map(b => [b.barcode, b]));
-      const key = b => `${(b.name || "").toLowerCase().trim()}|${(b.brewery || "").toLowerCase().trim()}`;
-      const byName = new Map(existing.map(b => [key(b), b]));
-      const byId = new Map(existing.map(b => [b.id, b]));
-
-      const plan = { insert: [], fill: [], same: 0, skipped: 0, badCodes: 0, dupes: 0, badList: [], dupeList: [] };
-      const sameBeer = (a, b) => normTxt(a.name) === normTxt(b.name) && normTxt(a.brewery) === normTxt(b.brewery);
-      const seenKeys = new Set();      // naam + brouwerij (of id)
-      const seenCodes = new Map();     // barcode -> eerste bier in het bestand
-      const dropCode = (nb, reason) => {
-        plan.badCodes++;
-        plan.badList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: nb.barcode, reden: reason });
-        nb.barcode = null;
-      };
-      for (const r of rows) {
-        const res = rowToBeer(r, map);
-        if (res.skip) { plan.skipped++; continue; }
-        if (res.badCode) { plan.badCodes++; plan.badList.push({ naam: res.beer.name, brouwerij: res.beer.brewery, barcode: res.badCode.raw, reden: res.badCode.reason }); }
-        const nb = res.beer;
-        // Dubbel = zelfde id, of zelfde naam en brouwerij
-        const k = res.id || key(nb);
-        if (seenKeys.has(k)) { plan.dupes++; plan.dupeList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: nb.barcode }); continue; }
-        seenKeys.add(k);
-        // Zelfde barcode bij een ander bier in het bestand: bier wel, barcode niet
-        if (nb.barcode) {
-          const first = seenCodes.get(nb.barcode);
-          if (first && !sameBeer(first, nb)) dropCode(nb, `deze barcode staat ook bij “${first.name}” in je bestand`);
-          else if (!first) seenCodes.set(nb.barcode, nb);
-        }
-        let match = (res.id && byId.get(res.id)) || null;
-        if (!match && nb.barcode) {
-          const owner = byCode.get(nb.barcode);
-          if (owner && sameBeer(owner, nb)) match = owner;
-          else if (owner) dropCode(nb, `deze barcode hoort in de database al bij “${owner.name}”`);
-        }
-        if (!match) match = byName.get(key(nb)) || null;
-        if (!match) { plan.insert.push({ ...nb, source: "csv" }); continue; }
-        const patch = {};
-        for (const f of ["brewery", "style", "abv", "country", "barcode", "description", "image_path"]) {
-          if ((match[f] == null || match[f] === "") && nb[f] != null && nb[f] !== "") {
-            if (f === "barcode" && byCode.has(nb[f])) continue;
-            patch[f] = nb[f];
-          }
-        }
-        if (Object.keys(patch).length) plan.fill.push({ id: match.id, name: match.name, patch });
-        else plan.same++;
-      }
-
-      const preview = plan.insert.slice(0, 5);
-      box.innerHTML = `
-        <div class="stack" style="margin-top:8px">
-          <div class="panel stack">
-            <h3>Herkende kolommen</h3>
-            <p class="small">${Object.entries(map).map(([f, h]) => `<b>${FIELD_LABELS[f]}</b> uit “${esc(h)}”`).join(", ")}</p>
-            ${headers.filter(h => !Object.values(map).includes(h)).length ? `<p class="muted small">Niet gebruikt: ${esc(headers.filter(h => !Object.values(map).includes(h)).join(", "))}</p>` : ""}
-          </div>
-          <div class="panel">
-            <ul class="import-sum">
-              <li><b>${plan.insert.length}</b> ${plan.insert.length === 1 ? "nieuw bier" : "nieuwe bieren"}</li>
-              <li><b>${plan.fill.length}</b> ${plan.fill.length === 1 ? "bestaand bier" : "bestaande bieren"} met aan te vullen gegevens</li>
-              <li><b>${plan.same}</b> ${plan.same === 1 ? "staat" : "staan"} al volledig in de database</li>
-              ${plan.dupes ? `<li><b>${plan.dupes}</b> dubbel in het bestand, één keer meegenomen</li>` : ""}
-              ${plan.skipped ? `<li><b>${plan.skipped}</b> ${plan.skipped === 1 ? "regel" : "regels"} zonder naam, overgeslagen</li>` : ""}
-              ${plan.badCodes ? `<li><b>${plan.badCodes}</b> ${plan.badCodes === 1 ? "barcode" : "barcodes"} weggelaten omdat ze ongeldig of al in gebruik zijn (het bier zelf wordt wel toegevoegd)</li>` : ""}
-            </ul>
-          </div>
-          ${plan.badList.length ? `
-            <details class="panel">
-              <summary><b>Weggelaten barcodes bekijken (${plan.badList.length})</b></summary>
-              <div class="table-scroll"><table class="preview">
-                <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode in bestand</th><th>Reden</th></tr></thead>
-                <tbody>${plan.badList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td><td class="wrap">${esc(r.reden)}</td></tr>`).join("")}</tbody>
-              </table></div>
-              <button class="btn ghost small" type="button" id="dlBad" style="margin-top:10px">Download als CSV</button>
-            </details>` : ""}
-          ${plan.dupeList.length ? `
-            <details class="panel">
-              <summary><b>Dubbele regels bekijken (${plan.dupeList.length})</b></summary>
-              <p class="muted small" style="margin-top:8px">Deze regels hebben dezelfde naam en brouwerij als een eerdere regel in je bestand. Alleen de eerste is meegenomen.</p>
-              <div class="table-scroll"><table class="preview">
-                <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode</th></tr></thead>
-                <tbody>${plan.dupeList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td></tr>`).join("")}</tbody>
-              </table></div>
-            </details>` : ""}
-          ${preview.length ? `
-            <div>
-              <h3>Voorbeeld van nieuwe bieren</h3>
-              <div class="table-scroll"><table class="preview">
-                <thead><tr><th>Naam</th><th>Brouwerij</th><th>Stijl</th><th>Alc.</th><th>Land</th><th>Barcode</th></tr></thead>
-                <tbody>${preview.map(b => `<tr><td>${esc(b.name)}</td><td>${esc(b.brewery)}</td><td>${esc(b.style)}</td><td>${b.abv != null ? nf(b.abv) + "%" : ""}</td><td>${esc(b.country)}</td><td>${esc(b.barcode)}</td></tr>`).join("")}</tbody>
-              </table></div>
-            </div>` : ""}
-          ${plan.fill.length ? `<label class="switch"><span>Lege velden van bestaande bieren aanvullen<br><span class="muted small">Bestaande gegevens worden nooit overschreven.</span></span><input type="checkbox" id="csvFill" checked></label>` : ""}
-          ${plan.insert.length || plan.fill.length
-            ? `<button class="btn block" type="button" id="csvGo">Importeren</button>`
-            : `<p class="muted">Er is niets nieuws om te importeren.</p>`}
-          <div id="csvProgress" hidden><span class="bar"><span style="width:0%"></span></span><p class="muted small" style="margin-top:6px"></p></div>
-        </div>`;
-
-      const dlBad = $("#dlBad");
-      if (dlBad) dlBad.onclick = () => downloadCsv(plan.badList, ["naam", "brouwerij", "barcode", "reden"], "ongeldige-barcodes.csv");
-      const go = $("#csvGo");
-      if (go) go.onclick = async () => {
-        go.disabled = true;
-        const fill = $("#csvFill") ? $("#csvFill").checked : false;
-        const jobs = plan.insert.length + (fill ? plan.fill.length : 0);
-        let done = 0, failed = 0;
-        const prog = $("#csvProgress"); prog.hidden = false;
-        const tick = () => {
-          prog.querySelector(".bar > span").style.width = `${Math.round(done / Math.max(1, jobs) * 100)}%`;
-          prog.querySelector("p").textContent = `${done} van ${jobs} verwerkt${failed ? `, ${failed} mislukt` : ""}`;
-        };
-        for (let i = 0; i < plan.insert.length; i += 200) {
-          const chunk = plan.insert.slice(i, i + 200);
-          const { error } = await sb.from("beers").insert(chunk);
-          if (error) {
-            // Eén foute regel mag de rest niet tegenhouden: dan per stuk
-            for (const b of chunk) { const { error: e1 } = await sb.from("beers").insert(b); if (e1) failed++; done++; tick(); }
-          } else { done += chunk.length; tick(); }
-        }
-        if (fill) {
-          for (let i = 0; i < plan.fill.length; i += 5) {
-            await Promise.all(plan.fill.slice(i, i + 5).map(async f => {
-              const { error } = await sb.from("beers").update(f.patch).eq("id", f.id);
-              if (error) failed++;
-              done++;
-            }));
-            tick();
-          }
-        }
-        tick();
-        $("#csvResult").insertAdjacentHTML("beforeend", `
-          <div class="panel" style="margin-top:12px">
-            <h3>Klaar</h3>
-            <p>${plan.insert.length} ${plan.insert.length === 1 ? "bier" : "bieren"} toegevoegd${fill && plan.fill.length ? ` en ${plan.fill.length} aangevuld` : ""}.${failed ? ` ${failed} lukte niet, bijvoorbeeld door een barcode die al bij een ander bier hoort.` : ""}</p>
-            <button class="btn" type="button" id="csvDone">Naar de database</button>
-          </div>`);
-        $("#csvDone").onclick = () => { closeDialog(); renderDatabase(); };
-      };
+      const norm = h => String(h).toLowerCase().trim().replace(/[\s-]+/g, "_");
+      const keepCol = headers.find(h => MERGE_KEEP.includes(norm(h)));
+      const removeCol = headers.find(h => MERGE_REMOVE.includes(norm(h)));
+      if (keepCol && removeCol) return analyzeMerge(rows, keepCol, removeCol);
+      return analyzeBeerImport(rows, headers);
     } catch (err) {
       box.innerHTML = `<p class="error">${esc(err.message || err)}</p>`;
-    } finally {
-      e.target.value = "";
     }
+  };
+}
+
+// ---------- Samenvoegen via een lijst ----------
+async function analyzeMerge(rows, keepCol, removeCol) {
+  const box = $("#csvResult");
+  const beers = await fetchAllBeers();
+  const byId = new Map(beers.map(b => [b.id, b]));
+  const pairs = rows.map((r, i) => {
+    const keep = String(r[keepCol] || "").trim().toLowerCase(), remove = String(r[removeCol] || "").trim().toLowerCase();
+    const k = byId.get(keep), d = byId.get(remove);
+    const problem = !isUuid(keep) || !isUuid(remove) ? "geen geldig id"
+      : keep === remove ? "twee keer hetzelfde id"
+      : !k ? "het bier om te houden bestaat niet (meer)"
+      : !d ? "het dubbele bier bestaat niet (meer)" : null;
+    return { i, keep, remove, k, d, problem };
+  }).filter(p => p.keep || p.remove);
+  const ok = pairs.filter(p => !p.problem);
+  const label = b => `<b>${esc(b.name)}</b> <span class="muted small">${esc(b.brewery || "")}</span>`;
+  box.innerHTML = `
+    <div class="stack" style="margin-top:8px">
+      <div class="panel"><ul class="import-sum">
+        <li><b>${ok.length}</b> ${ok.length === 1 ? "paar" : "paren"} om samen te voegen</li>
+        ${pairs.length - ok.length ? `<li class="error"><b>${pairs.length - ok.length}</b> ${pairs.length - ok.length === 1 ? "regel" : "regels"} met een probleem (zie onderaan)</li>` : ""}
+      </ul></div>
+      ${ok.length ? `
+        <div class="panel stack">
+          <p class="muted small">Het onderste bier gaat op in het bovenste: check-ins en barcodes gaan mee, lege velden worden aangevuld en het onderste bier verdwijnt. Haal het vinkje weg bij een paar dat niet klopt.</p>
+          <label class="check"><input type="checkbox" id="mergeAll" checked> Alles aan- of uitvinken</label>
+          <div class="pairs">${ok.map(p => `
+            <label class="pair on pair-main">
+              <input type="checkbox" data-merge-i="${p.i}" checked>
+              <span>Houden: ${label(p.k)}<br><span class="small">Samenvoegen: ${label(p.d)}</span></span>
+            </label>`).join("")}</div>
+        </div>` : ""}
+      ${pairs.some(p => p.problem) ? `
+        <details class="panel"><summary><b>Regels met een probleem (${pairs.filter(p => p.problem).length})</b></summary>
+          <div class="table-scroll" style="margin-top:8px"><table class="preview"><thead><tr><th>Regel</th><th>houden_id</th><th>samenvoegen_id</th><th>Probleem</th></tr></thead>
+          <tbody>${pairs.filter(p => p.problem).map(p => `<tr><td>${p.i + 2}</td><td>${esc(p.keep)}</td><td>${esc(p.remove)}</td><td class="wrap">${esc(p.problem)}</td></tr>`).join("")}</tbody></table></div>
+        </details>` : ""}
+      ${ok.length ? `<button class="btn block" type="button" id="mergeGo">Samenvoegen</button>` : ""}
+      <div id="csvProgress" hidden><span class="bar"><span style="width:0%"></span></span><p class="muted small" style="margin-top:6px"></p></div>
+    </div>`;
+  const all = $("#mergeAll");
+  if (all) all.onchange = () => document.querySelectorAll("[data-merge-i]").forEach(c => { c.checked = all.checked; c.closest(".pair").classList.toggle("on", c.checked); });
+  box.addEventListener("change", e => { const c = e.target.closest("[data-merge-i]"); if (c) c.closest(".pair").classList.toggle("on", c.checked); });
+  const go = $("#mergeGo");
+  if (go) go.onclick = async () => {
+    const chosen = ok.filter(p => document.querySelector(`[data-merge-i="${p.i}"]`)?.checked);
+    if (!chosen.length) return toast("Er is niets aangevinkt.");
+    if (!confirm(`${chosen.length} ${chosen.length === 1 ? "paar" : "paren"} samenvoegen? Dit kan niet ongedaan worden gemaakt.`)) return;
+    go.disabled = true; document.querySelectorAll("#csvResult input").forEach(i => i.disabled = true);
+    const prog = $("#csvProgress"); prog.hidden = false;
+    let done = 0, moved = 0; const failed = [];
+    for (const p of chosen) {
+      const { data, error } = await sb.rpc("admin_merge_beers", { keep: p.keep, remove: p.remove });
+      if (error) failed.push({ p, msg: error.message }); else moved += data?.checkins || 0;
+      done++;
+      prog.querySelector(".bar > span").style.width = `${Math.round(done / chosen.length * 100)}%`;
+      prog.querySelector("p").textContent = `${done} van ${chosen.length} samengevoegd`;
+    }
+    box.insertAdjacentHTML("beforeend", `
+      <div class="panel stack" style="margin-top:12px">
+        <h3>Klaar</h3>
+        <p>${chosen.length - failed.length} ${chosen.length - failed.length === 1 ? "paar" : "paren"} samengevoegd, ${moved} check-ins overgezet.</p>
+        ${failed.length ? `<p class="error">${failed.length} lukte niet:</p><ul class="import-sum">${failed.map(f => `<li>${esc(f.p.d?.name || f.p.remove)}: ${esc(f.msg)}</li>`).join("")}</ul>` : ""}
+        <button class="btn" type="button" id="csvDone">Naar de database</button>
+      </div>`);
+    $("#csvDone").onclick = () => { closeDialog(); renderDatabase(); };
+  };
+}
+
+// ---------- Bieren importeren, aanvullen of overschrijven ----------
+async function analyzeBeerImport(rows, headers) {
+  const box = $("#csvResult");
+  const map = mapColumns(headers);
+  if (!map.name) {
+    box.innerHTML = `<p class="error">Er is geen kolom met de naam van het bier gevonden. Gevonden kolommen: ${esc(headers.join(", "))}. Noem de kolom bijvoorbeeld “naam”, of gebruik houden_id en samenvoegen_id om bieren samen te voegen.</p>`;
+    return;
+  }
+  const [existing, allCodes] = await Promise.all([fetchAllBeers(), fetchAllCodes()]);
+  const byId = new Map(existing.map(b => [b.id, b]));
+  const owner = new Map();
+  for (const [beerId, list] of allCodes) for (const c of list) owner.set(c, byId.get(beerId));
+  for (const b of existing) if (b.barcode && !owner.has(b.barcode)) owner.set(b.barcode, b);
+  const key = b => `${normTxt(b.name)}|${normTxt(b.brewery || "")}`;
+  const byName = new Map(existing.map(b => [key(b), b]));
+  const sameBeer = (a, b) => key(a) === key(b);
+  const isAdmin = !!state.me?.is_admin;
+
+  const plan = { insert: [], fill: [], over: [], same: 0, skipped: 0, dupes: 0, badList: [], dupeList: [] };
+  const seenKeys = new Set(), fileCode = new Map();
+  for (const r of rows) {
+    const res = rowToBeer(r, map);
+    if (res.skip) { plan.skipped++; continue; }
+    const nb = res.beer;
+    for (const b of res.bad) plan.badList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: b.raw, reden: b.reason });
+    const k = res.id || key(nb);
+    if (seenKeys.has(k)) { plan.dupes++; plan.dupeList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: res.codes.join(" | ") }); continue; }
+    seenKeys.add(k);
+
+    let match = (res.id && byId.get(res.id)) || null;
+    if (!match) for (const c of res.codes) { const o = owner.get(c); if (o && sameBeer(o, nb)) { match = o; break; } }
+    if (!match) match = byName.get(key(nb)) || null;
+
+    // Barcodes die al bij een ander bier horen, of in het bestand bij een ander bier staan, vallen af
+    const codes = [];
+    for (const c of res.codes) {
+      const o = owner.get(c), f = fileCode.get(c);
+      if (o && (!match || o.id !== match.id)) plan.badList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: c, reden: `deze barcode hoort in de database al bij “${o.name}”` });
+      else if (f && f !== k) plan.badList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: c, reden: `deze barcode staat in je bestand ook bij een ander bier` });
+      else { fileCode.set(c, k); if (!o) codes.push(c); }
+    }
+
+    if (!match) { plan.insert.push({ beer: { ...nb, barcode: codes[0] || null, source: "csv" }, extra: codes.slice(1) }); continue; }
+
+    // Aanvullen: alleen lege velden, plus nieuwe barcodes
+    const patch = {};
+    for (const f of ["brewery", "style", "abv", "country", "description", "image_path"]) {
+      if ((match[f] == null || match[f] === "") && nb[f] != null && nb[f] !== "") patch[f] = nb[f];
+    }
+    let extra = codes;
+    if (!match.barcode && codes.length) { patch.barcode = codes[0]; extra = codes.slice(1); }
+    if (Object.keys(patch).length || extra.length) plan.fill.push({ id: match.id, name: match.name, patch, extra, byId: !!res.id });
+    else plan.same++;
+
+    // Overschrijven: alleen regels met een id, nooit barcodes of foto's, en lege cellen wissen niets
+    if (res.id && isAdmin) {
+      const changes = {};
+      for (const f of ["name", "brewery", "style", "abv", "country", "description"]) {
+        const nv = nb[f], ov = match[f];
+        if (nv == null || nv === "") continue;
+        const differs = f === "abv" ? Number(nv) !== Number(ov) : String(nv).trim() !== String(ov ?? "").trim();
+        if (differs) changes[f] = [ov, nv];
+      }
+      if (Object.keys(changes).length) plan.over.push({ id: match.id, name: match.name, changes });
+    }
+  }
+
+  const preview = plan.insert.slice(0, 5).map(x => x.beer);
+  const FN = { name: "Naam", brewery: "Brouwerij", style: "Stijl", abv: "Alcohol", country: "Land", description: "Omschrijving" };
+  const show = (f, v) => v == null || v === "" ? `<span class="muted">leeg</span>` : f === "abv" ? esc(nf(v)) + "%" : esc(v);
+  box.innerHTML = `
+    <div class="stack" style="margin-top:8px">
+      <div class="panel stack">
+        <h3>Herkende kolommen</h3>
+        <p class="small">${Object.entries(map).map(([f, h]) => `<b>${FIELD_LABELS[f]}</b> uit “${esc(h)}”`).join(", ")}</p>
+        ${headers.filter(h => !Object.values(map).includes(h)).length ? `<p class="muted small">Niet gebruikt: ${esc(headers.filter(h => !Object.values(map).includes(h)).join(", "))}</p>` : ""}
+      </div>
+      <div class="panel">
+        <ul class="import-sum">
+          <li><b>${plan.insert.length}</b> ${plan.insert.length === 1 ? "nieuw bier" : "nieuwe bieren"}</li>
+          <li><b>${plan.fill.length}</b> ${plan.fill.length === 1 ? "bestaand bier" : "bestaande bieren"} met aan te vullen gegevens of barcodes</li>
+          <li><b>${plan.same}</b> ${plan.same === 1 ? "staat" : "staan"} al volledig in de database</li>
+          ${plan.over.length ? `<li><b>${plan.over.length}</b> ${plan.over.length === 1 ? "bestaand bier" : "bestaande bieren"} met andere gegevens dan in de database (zie Overschrijven)</li>` : ""}
+          ${plan.dupes ? `<li><b>${plan.dupes}</b> dubbel in het bestand, één keer meegenomen</li>` : ""}
+          ${plan.skipped ? `<li><b>${plan.skipped}</b> ${plan.skipped === 1 ? "regel" : "regels"} zonder naam, overgeslagen</li>` : ""}
+          ${plan.badList.length ? `<li><b>${plan.badList.length}</b> ${plan.badList.length === 1 ? "barcode" : "barcodes"} weggelaten omdat ze ongeldig of al in gebruik zijn (het bier zelf wordt wel verwerkt)</li>` : ""}
+        </ul>
+      </div>
+      ${plan.over.length ? `
+        <div class="panel stack">
+          <label class="switch"><span><b>Bestaande gegevens overschrijven (${plan.over.length})</b><br>
+            <span class="muted small">Voor bieren met een id worden naam, brouwerij, stijl, alcohol, land en omschrijving vervangen door die uit het bestand. Barcodes en foto’s blijven altijd ongemoeid, en lege cellen wissen niets.</span></span>
+            <input type="checkbox" id="csvOver"></label>
+          <details><summary class="small"><b>Bekijk wat er verandert</b></summary>
+            <div class="table-scroll" style="margin-top:8px"><table class="preview diff">
+              <thead><tr><th>Bier</th><th>Veld</th><th>Was</th><th>Wordt</th></tr></thead>
+              <tbody>${plan.over.slice(0, 300).flatMap(o => Object.entries(o.changes).map(([f, [ov, nv]], j) =>
+                `<tr><td>${j ? "" : `<b>${esc(o.name)}</b>`}</td><td>${FN[f]}</td><td>${show(f, ov)}</td><td>${show(f, nv)}</td></tr>`)).join("")}</tbody>
+            </table></div>
+            ${plan.over.length > 300 ? `<p class="muted small">Eerste 300 van ${plan.over.length} getoond.</p>` : ""}
+          </details>
+        </div>` : ""}
+      ${plan.badList.length ? `
+        <details class="panel">
+          <summary><b>Weggelaten barcodes bekijken (${plan.badList.length})</b></summary>
+          <div class="table-scroll"><table class="preview">
+            <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode in bestand</th><th>Reden</th></tr></thead>
+            <tbody>${plan.badList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td><td class="wrap">${esc(r.reden)}</td></tr>`).join("")}</tbody>
+          </table></div>
+          <button class="btn ghost small" type="button" id="dlBad" style="margin-top:10px">Download als CSV</button>
+        </details>` : ""}
+      ${plan.dupeList.length ? `
+        <details class="panel">
+          <summary><b>Dubbele regels bekijken (${plan.dupeList.length})</b></summary>
+          <p class="muted small" style="margin-top:8px">Deze regels hebben hetzelfde id, of dezelfde naam en brouwerij, als een eerdere regel in je bestand. Alleen de eerste is meegenomen.</p>
+          <div class="table-scroll"><table class="preview">
+            <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode</th></tr></thead>
+            <tbody>${plan.dupeList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td></tr>`).join("")}</tbody>
+          </table></div>
+        </details>` : ""}
+      ${preview.length ? `
+        <div>
+          <h3>Voorbeeld van nieuwe bieren</h3>
+          <div class="table-scroll"><table class="preview">
+            <thead><tr><th>Naam</th><th>Brouwerij</th><th>Stijl</th><th>Alc.</th><th>Land</th><th>Barcode</th></tr></thead>
+            <tbody>${preview.map(b => `<tr><td>${esc(b.name)}</td><td>${esc(b.brewery)}</td><td>${esc(b.style)}</td><td>${b.abv != null ? nf(b.abv) + "%" : ""}</td><td>${esc(b.country)}</td><td>${esc(b.barcode)}</td></tr>`).join("")}</tbody>
+          </table></div>
+        </div>` : ""}
+      ${plan.fill.length ? `<label class="switch"><span>Lege velden en nieuwe barcodes van bestaande bieren aanvullen<br><span class="muted small">Bestaande gegevens worden hiermee nooit overschreven.</span></span><input type="checkbox" id="csvFill" checked></label>` : ""}
+      ${plan.insert.length || plan.fill.length || plan.over.length
+        ? `<button class="btn block" type="button" id="csvGo">Importeren</button>`
+        : `<p class="muted">Er is niets nieuws om te importeren.</p>`}
+      <div id="csvProgress" hidden><span class="bar"><span style="width:0%"></span></span><p class="muted small" style="margin-top:6px"></p></div>
+    </div>`;
+
+  const dlBad = $("#dlBad");
+  if (dlBad) dlBad.onclick = () => downloadCsv(plan.badList, ["naam", "brouwerij", "barcode", "reden"], "weggelaten-barcodes.csv");
+  const go = $("#csvGo");
+  if (!go) return;
+  go.onclick = async () => {
+    const over = $("#csvOver")?.checked || false;
+    const fill = $("#csvFill") ? $("#csvFill").checked : false;
+    if (over && !confirm(`Bij ${plan.over.length} bieren de bestaande gegevens overschrijven met die uit het bestand?`)) return;
+    go.disabled = true;
+    document.querySelectorAll("#csvResult input").forEach(i => i.disabled = true);
+    const overIds = new Set(over ? plan.over.map(o => o.id) : []);
+    const fills = fill ? plan.fill.map(f => {
+      if (!over) return f;
+      // Bij overschrijven: barcodes nooit aanraken
+      const patch = { ...f.patch }; delete patch.barcode;
+      return { ...f, patch, extra: [] };
+    }).filter(f => !overIds.has(f.id))   // al meegenomen bij overschrijven
+      .filter(f => Object.keys(f.patch).length || f.extra.length) : [];
+    const jobs = plan.insert.length + fills.length + overIds.size;
+    let done = 0, failed = 0;
+    const prog = $("#csvProgress"); prog.hidden = false;
+    const tick = () => {
+      prog.querySelector(".bar > span").style.width = `${Math.round(done / Math.max(1, jobs) * 100)}%`;
+      prog.querySelector("p").textContent = `${done} van ${jobs} verwerkt${failed ? `, ${failed} mislukt` : ""}`;
+    };
+    const addCodes = async (beerId, list) => { for (const code of list) await sb.from("beer_barcodes").insert({ code, beer_id: beerId }); };
+
+    // Nieuwe bieren
+    for (let i = 0; i < plan.insert.length; i += 200) {
+      const chunk = plan.insert.slice(i, i + 200).map(x => over ? { ...x.beer, barcode: null } : x.beer);
+      const { data, error } = await sb.from("beers").insert(chunk).select("id");
+      if (error) {
+        for (let j = 0; j < chunk.length; j++) {
+          const { data: one, error: e1 } = await sb.from("beers").insert(chunk[j]).select("id").single();
+          if (e1) failed++; else if (!over) await addCodes(one.id, plan.insert[i + j].extra);
+          done++; tick();
+        }
+      } else {
+        if (!over) for (let j = 0; j < data.length; j++) await addCodes(data[j].id, plan.insert[i + j].extra);
+        done += chunk.length; tick();
+      }
+    }
+    // Overschrijven
+    const overList = plan.over.filter(o => overIds.has(o.id));
+    for (let i = 0; i < overList.length; i += 5) {
+      await Promise.all(overList.slice(i, i + 5).map(async o => {
+        const patch = Object.fromEntries(Object.entries(o.changes).map(([f, [, nv]]) => [f, nv]));
+        const { error } = await sb.from("beers").update(patch).eq("id", o.id);
+        if (error) failed++;
+        done++;
+      }));
+      tick();
+    }
+    // Aanvullen
+    for (let i = 0; i < fills.length; i += 5) {
+      await Promise.all(fills.slice(i, i + 5).map(async f => {
+        if (Object.keys(f.patch).length) { const { error } = await sb.from("beers").update(f.patch).eq("id", f.id); if (error) failed++; }
+        await addCodes(f.id, f.extra);
+        done++;
+      }));
+      tick();
+    }
+    tick();
+    $("#csvResult").insertAdjacentHTML("beforeend", `
+      <div class="panel" style="margin-top:12px">
+        <h3>Klaar</h3>
+        <p>${plan.insert.length} ${plan.insert.length === 1 ? "bier" : "bieren"} toegevoegd${overIds.size ? `, ${overIds.size} overschreven` : ""}${fills.length ? `, ${fills.length} aangevuld` : ""}.${failed ? ` ${failed} lukte niet, bijvoorbeeld door een barcode die al bij een ander bier hoort.` : ""}</p>
+        <button class="btn" type="button" id="csvDone">Naar de database</button>
+      </div>`);
+    $("#csvDone").onclick = () => { closeDialog(); renderDatabase(); };
   };
 }
 
@@ -3051,7 +3260,7 @@ function showDbBeer(b) {
         ${fact("Stijl", b.style)}
         ${fact("Alcohol", b.abv != null ? nf(b.abv) + "%" : null)}
         ${fact("Land", b.country)}
-        ${fact("Barcode", b.barcode || "Nog geen")}
+        ${codesFact(b)}
       </dl>
       ${b.description ? `<p>${esc(b.description)}</p>` : ""}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -3061,6 +3270,7 @@ function showDbBeer(b) {
       <div class="panel beer-stats" id="beerStats"><p class="muted small">Kijken wie dit al heeft gedronken…</p></div>
     </div>`);
   $("#dbCheckin").onclick = () => { state.draft = { beer: b }; location.hash = "inchecken"; };
+  fillCodesFact(b.id);
   loadBeerStats(b);
 }
 
@@ -3090,19 +3300,27 @@ async function renderBeerForm(id) {
         <h1>${isNew ? "Bier toevoegen" : "Bier bewerken"}</h1>
         ${isNew ? `<p class="muted">Het bier komt in de database zonder dat je het incheckt.</p>`
           : `<p class="muted">${linked ? `Wijzigingen gelden direct voor alle ${linked} ${linked === 1 ? "check-in" : "check-ins"} van dit bier, bij iedereen.` : "Er is nog niet op dit bier ingecheckt."}</p>`}
-        ${!full ? `<p class="notice">Je kunt bij dit bier een ontbrekende foto of barcode toevoegen. Andere gegevens kan een databasebeheerder aanpassen.</p>` : ""}
+        ${!full ? `<p class="notice">Je kunt bij dit bier een ontbrekende foto en extra barcodes toevoegen. Andere gegevens kan een databasebeheerder aanpassen.</p>` : ""}
         ${reviewNote}
       </div>
 
       <div class="panel stack">
-        <h2>Barcode</h2>
-        ${codeLocked ? `<p><b>${esc(beer.barcode)}</b></p><input type="hidden" name="barcode" id="formCode" value="${esc(beer.barcode)}">` : `
+        <h2>Barcodes</h2>
+        ${isNew ? `
         ${barcodeToolsHtml()}
         <div class="type-code">
           <input class="input" name="barcode" id="formCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode" value="${esc(beer.barcode)}">
           <button class="btn ghost" type="button" id="formLookup">Opzoeken</button>
         </div>
-        <p class="muted small" id="lookupMsg">${full ? "Scan of typ de barcode en kies Opzoeken. Lege velden worden dan aangevuld uit alle bronnen." : "Scan of typ de barcode van dit bier."}</p>`}
+        <p class="muted small" id="lookupMsg">Scan of typ de barcode en kies Opzoeken. Lege velden worden dan aangevuld uit alle bronnen.</p>` : `
+        <div class="code-list" id="codeList"><span class="muted small">Barcodes ophalen…</span></div>
+        <p class="muted small">Een flesje, blikje of multipack heeft vaak een eigen barcode. Voeg ze allemaal toe, dan herkent de scanner elke verpakking.</p>
+        ${barcodeToolsHtml()}
+        <div class="type-code">
+          <input class="input" id="formCode" inputmode="numeric" autocomplete="off" placeholder="Extra barcode intypen" aria-label="Extra barcode">
+          <button class="btn ghost" type="button" id="formLookup">Toevoegen</button>
+        </div>
+        <p class="muted small" id="lookupMsg"></p>`}
       </div>
 
       <div class="panel stack">
@@ -3156,7 +3374,40 @@ async function renderBeerForm(id) {
     return n;
   };
 
+  const drawCodes = async () => {
+    const box = $("#codeList");
+    if (!box) return;
+    const list = await codesOf(beer.id);
+    const canDel = !!(state.me?.is_admin || state.me?.is_db_editor);
+    box.innerHTML = list.length ? list.map(c => `<span class="code-chip">${esc(c)}${canDel ? `<button type="button" data-delcode="${esc(c)}" aria-label="Barcode ${esc(c)} verwijderen">×</button>` : ""}</span>`).join("")
+      : `<span class="muted small">Nog geen barcode.</span>`;
+  };
+  if (!isNew) {
+    drawCodes();
+    $("#codeList").onclick = async e => {
+      const d = e.target.closest("[data-delcode]");
+      if (!d || !confirm(`Barcode ${d.dataset.delcode} bij dit bier verwijderen?`)) return;
+      const { error } = await sb.from("beer_barcodes").delete().eq("code", d.dataset.delcode);
+      if (error) return toast(error.message);
+      toast("Barcode verwijderd"); drawCodes();
+    };
+  }
+  const addCode = async code => {
+    msg.textContent = `Barcode ${code} toevoegen…`;
+    const owner = await findBeerByCode(code);
+    if (owner) {
+      msg.innerHTML = owner.id === beer.id ? `Barcode ${esc(code)} hoort al bij dit bier.`
+        : `Barcode ${esc(code)} hoort al bij <a href="#database/bewerk/${owner.id}">${esc(owner.name)}</a>.`;
+      return;
+    }
+    const { error } = await sb.rpc("link_barcode", { beer: beer.id, code });
+    if (error) { msg.textContent = error.message; return; }
+    $("#formCode").value = "";
+    msg.textContent = `Barcode ${code} toegevoegd${state.me?.is_admin ? "" : ". De beheerder controleert het nog"}.`;
+    drawCodes();
+  };
   const onCode = async code => {
+    if (!isNew) return addCode(code);
     $("#formCode").value = code;
     msg.textContent = `Barcode ${code}: opzoeken in alle bronnen…`;
     const found = await lookupBarcode(code);
@@ -3237,7 +3488,7 @@ async function renderBeerForm(id) {
     err.hidden = true; buttons.forEach(b => b.disabled = true);
     // Een uitgeschakelde fieldset stuurt niets mee: dan de bestaande gegevens gebruiken
     const fd = new FormData(form);
-    const fields = full ? readBeerFields(fd) : { name: beer.name, barcode: cleanBarcode(fd.get("barcode")) || null };
+    const fields = full ? readBeerFields(fd) : { name: beer.name };
     if (!fields.name) return fail("Vul de naam van het bier in.");
     if (fields.barcode && !validBarcode(fields.barcode)) return fail("Deze barcode klopt niet. Controleer de cijfers, of laat het veld leeg.");
     try {
@@ -3443,7 +3694,7 @@ function drawBcBody() {
       </div>`;
     box.scrollIntoView({ behavior: "smooth", block: "start" });
     const onCode = async code => {
-      const { data: owner } = await sb.from("beers").select("id, name").eq("barcode", code).maybeSingle();
+      const owner = await findBeerByCode(code);
       if (owner) { const m = $("#scanMsg"); m.hidden = false; m.textContent = `Barcode ${code} hoort al bij “${owner.name}”.`; return; }
       if (await linkCode(b.id, code)) { bcState.target = null; drawTarget(); draw(); }
     };
@@ -3494,13 +3745,29 @@ async function handleBcScan(code) {
       </div>
     </div>`;
 
-  const find = () => {
+  let findSeq = 0;
+  const find = async () => {
     const q = $("#bcFind").value;
-    $("#bcFindList").innerHTML = q.trim().length >= 2
-      ? (localSearch(q, 12).map(b => bcRow(b, `<button class="btn small" type="button" data-bclink="${b.id}">Koppelen</button>`)).join("") || `<p class="muted small">Niets gevonden zonder barcode.</p>`)
-      : "";
+    const my = ++findSeq;
+    if (q.trim().length < 2) { $("#bcFindList").innerHTML = ""; return; }
+    const local = localSearch(q, 12);
+    const draw = withCode => {
+      $("#bcFindList").innerHTML =
+        local.map(b => bcRow(b, `<button class="btn small" type="button" data-bclink="${b.id}">Koppelen</button>`)).join("") +
+        (withCode.length ? `<p class="muted small" style="margin-top:6px">Al met een barcode (bijvoorbeeld de fles; dit wordt een extra barcode, zoals voor het blikje)</p>` +
+          withCode.map(b => bcRow(b, `<button class="btn soft small" type="button" data-bclink="${b.id}">Extra barcode</button>`)).join("") : "") ||
+        `<p class="muted small">Niets gevonden. Voeg het toe als nieuw bier.</p>`;
+    };
+    draw([]);
+    // Ook bieren die al een barcode hebben
+    const qs = q.trim().replace(/[,()%*\\]/g, " ").trim();
+    const { data } = await sb.from("beers").select("id, name, brewery, style, abv, image_path")
+      .not("barcode", "is", null).or(`name.ilike.%${qs}%,brewery.ilike.%${qs}%`).order("name").limit(8);
+    if (my !== findSeq) return;
+    draw(data || []);
   };
-  $("#bcFind").oninput = find;
+  let findT;
+  $("#bcFind").oninput = () => { clearTimeout(findT); findT = setTimeout(find, 250); };
   find();
   box.onclick = async e => {
     const l = e.target.closest("[data-bclink]");
