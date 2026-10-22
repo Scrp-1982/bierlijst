@@ -436,6 +436,8 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .levels li.done { color: var(--ink); font-weight: 600; }
 .levels .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; opacity: .35; }
 .levels li.done .dot { opacity: 1; }
+.surprise { display: flex; align-items: center; gap: 16px; }
+.surprise .coaster { flex: none; }
 .badge-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
 .badge-strip .badge { flex: 0 0 84px; }
 
@@ -619,7 +621,7 @@ dialog.lightbox img {
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.21";
+const APP_VERSION = "2026-10-22.22";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -2378,9 +2380,29 @@ function badgeHtml(b, small) {
     </button>`;
 }
 
+// Badges die je nog niet hebt, blijven een verrassing (behalve voor beheerders)
+function badgeSurprise() { return !state.me?.is_admin; }
+
 function showBadgeDialog(b) {
   if (!b) return;
   const earned = b.level > 0;
+  if (badgeSurprise()) {
+    const left = b.maxLevel - b.level;
+    openDialog(`
+      <div class="stack badge-detail">
+        ${coasterHtml(b, "big")}
+        <h2>${esc(b.name)}</h2>
+        <p class="muted">Niveau ${b.level}, verdiend op ${fmtDate(b.earnedAt)}</p>
+        <div>
+          <h3>Verdiende niveaus</h3>
+          <ol class="levels">
+            ${b.thresholds.slice(0, b.level).map((t, i) => `<li class="done"><span class="dot" style="background:${TIER_COLORS[i] || TIER_COLORS.at(-1)}"></span><span>${esc(b.descOf(t))} <span class="muted small">(${fmtDate(b.dates[i])})</span></span></li>`).join("")}
+          </ol>
+        </div>
+        <p>${left ? `Er ${left === 1 ? "is nog een niveau" : `zijn nog ${left} niveaus`} te ontdekken. Proost!` : "Je hebt het hoogste niveau bereikt. Proost!"}</p>
+      </div>`);
+    return;
+  }
   openDialog(`
     <div class="stack badge-detail">
       ${coasterHtml(b, "big")}
@@ -2456,12 +2478,21 @@ async function renderBadges(userId) {
         </div>
       </div>
       ${earned.length ? `<section class="stack"><h2>Verdiend</h2><div class="badges">${earned.map(b => badgeHtml(b)).join("")}</div></section>`
-        : `<div class="panel empty">${coasterHtml({ level: 0, emoji: "🍺" }, "big")}<h2 style="margin-top:12px">Nog geen badges</h2><p class="muted">${own ? "Check je eerste bier in en verdien meteen je eerste badge." : "Nog niets verdiend."}</p></div>`}
+        : `<div class="panel empty">${coasterHtml({ level: 0, emoji: "🍺" }, "big")}<h2 style="margin-top:12px">Nog geen badges</h2><p class="muted">${own ? "Check je eerste bier in en ontdek je eerste badge." : "Nog niets verdiend."}</p></div>`}
+      ${badgeSurprise() ? (() => {
+        const hidden = badges.filter(b => b.level === 0 && !["land", "brouwerij"].includes(b.cat)).length;
+        return hidden ? `
+          <div class="panel surprise">
+            <span class="coaster locked" style="--tier:var(--line)"><span class="em" aria-hidden="true">❓</span></span>
+            <div><b>Nog ${hidden} badges te ontdekken</b><br><span class="muted small">Plus een badge voor elk land en elke brouwerij. Welke het zijn, blijft een verrassing. Proost!</span></div>
+          </div>` : "";
+      })() : `
+      <p class="notice small">Als beheerder zie je ook de badges die nog niet verdiend zijn. Gewone gebruikers zien alleen wat ze al hebben; de rest blijft een verrassing.</p>
       ${almost.length ? `<section class="stack"><h2>Bijna</h2><div class="badges">${almost.map(b => badgeHtml(b)).join("")}</div></section>` : ""}
       ${BADGE_CATS.map(([cat, label]) => {
         const list = todo(cat);
         return list.length ? `<section class="stack"><h2>Nog te verdienen: ${label.toLowerCase()}</h2><div class="badges">${list.map(b => badgeHtml(b)).join("")}</div></section>` : "";
-      }).join("")}
+      }).join("")}`}
     </div>`;
   view().onclick = e => {
     const el = e.target.closest("[data-badge]");
