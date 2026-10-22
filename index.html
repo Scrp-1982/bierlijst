@@ -257,11 +257,24 @@ textarea.input { min-height: 92px; resize: vertical; }
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 8px;
 }
 .bc-row .beer-photo { width: 52px; }
+.preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.preset {
+  appearance: none; cursor: pointer; text-align: left; color: inherit;
+  display: flex; flex-direction: column; gap: 2px; padding: 14px; border-radius: var(--radius-lg);
+  background: var(--surface); border: 1.5px solid var(--line);
+}
+.preset:hover { border-color: var(--hop); }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--hop); flex: none; margin: 0; }
 .import-sum { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); margin-top: 8px; }
 table.preview { border-collapse: collapse; width: 100%; font-size: .88rem; }
 table.preview th, table.preview td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 table.preview th { background: var(--surface); font-weight: 700; }
+table.preview td.wrap { white-space: normal; min-width: 220px; }
+details.panel summary { cursor: pointer; }
+details.panel[open] summary { margin-bottom: 8px; }
 .db-row {
   display: grid; grid-template-columns: 60px 1fr; gap: 12px; align-items: center; width: 100%; text-align: left;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 8px; cursor: pointer; color: inherit;
@@ -272,6 +285,14 @@ table.preview th { background: var(--surface); font-weight: 700; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 3px; }
 .tag { font-size: 0.76rem; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--paper); color: var(--muted); border: 1px solid var(--line); }
 .tag.on { background: var(--hop-soft); color: var(--ink); border-color: transparent; }
+.loc-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  appearance: none; cursor: pointer; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 999px; padding: 6px 12px; font-weight: 600; font-size: .9rem; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chip:hover { border-color: var(--muted); }
+.chip.on { background: var(--hop-soft); border-color: var(--hop); }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -518,7 +539,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.6";
+const APP_VERSION = "2026-10-22.9";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -597,6 +618,10 @@ document.addEventListener("input", e => {
   const cnt = ta.parentElement.querySelector(".char-count");
   if (cnt) { cnt.textContent = `${n} / ${limit}`; cnt.classList.toggle("full", n >= limit); }
 });
+
+// Thuis drinken: vaste naam, nooit met coördinaten (privacy)
+const HOME_LABEL = "Tapped at Home";
+function isHome(name) { return /^(tapped at home|untappd at home|at home|home|thuis)$/i.test(String(name || "").trim()); }
 
 function avatarHtml(p, size) {
   const url = photoUrl(p?.avatar_path);
@@ -1077,7 +1102,10 @@ function editCheckin(c, beer) {
         <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Hoe gedronken</span>
         <div class="segmented">${servingOptions(c.serving)}</div>
       </div>
-      <label class="field"><span>Locatie</span><input class="input" name="location_name" value="${esc(c.location_name)}"></label>
+      <div>
+        <label class="field"><span>Locatie</span><input class="input" name="location_name" id="eLoc" value="${esc(c.location_name)}"></label>
+        <div class="loc-chips"><button type="button" class="chip ${isHome(c.location_name) ? "on" : ""}" id="eHome">🏠 ${HOME_LABEL}</button></div>
+      </div>
       <label class="field"><span>Wanneer</span><input class="input" type="datetime-local" name="drunk_at" value="${toLocalInput(c.drunk_at)}"></label>
       <label class="field"><span>Notities</span>${limitedTextarea("notes", 300, c.notes || "")}</label>
       <div>
@@ -1093,6 +1121,7 @@ function editCheckin(c, beer) {
       <button class="btn block" type="submit" id="eSave">Wijzigingen opslaan</button>
     </form>`);
 
+  $("#eHome").onclick = () => { $("#eLoc").value = HOME_LABEL; $("#eHome").classList.add("on"); };
   const r = $("#eRating");
   r.oninput = () => { $("#eRatingOut").textContent = nf(r.value, 1); $("#eRatingStars").innerHTML = stars(r.value); };
   let photoFile = null;
@@ -1109,7 +1138,8 @@ function editCheckin(c, beer) {
       const update = {
         rating: Number(f.get("rating")),
         serving: f.get("serving") || null,
-        location_name: String(f.get("location_name") || "").trim() || null,
+        location_name: isHome(f.get("location_name")) ? HOME_LABEL : (String(f.get("location_name") || "").trim() || null),
+        ...(isHome(f.get("location_name")) ? { latitude: null, longitude: null } : {}),
         drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : c.drunk_at,
         notes: clampChars(String(f.get("notes") || "").trim(), 300) || null,
       };
@@ -1390,6 +1420,9 @@ function renderCheckin() {
         </div>
         <div>
           <label class="field"><span>Locatie</span><input class="input" name="location_name" id="locName" placeholder="Bijv. café of stad"></label>
+          <div class="loc-chips" id="locChips">
+            <button type="button" class="chip" data-loc="${HOME_LABEL}">🏠 ${HOME_LABEL}</button>
+          </div>
           <button class="btn soft small" type="button" id="geoBtn" style="margin-top:8px">Huidige locatie gebruiken</button>
           <input type="hidden" name="latitude" id="lat"><input type="hidden" name="longitude" id="lon">
         </div>
@@ -1523,6 +1556,37 @@ function renderCheckin() {
   const r = $("#rating");
   r.oninput = () => { $("#ratingOut").textContent = nf(r.value, 1); $("#ratingStars").innerHTML = stars(r.value); };
 
+  // Snelkeuzes: Tapped at Home en je laatste locaties
+  const setLoc = (name, lat, lon) => {
+    $("#locName").value = name;
+    $("#lat").value = isHome(name) ? "" : (lat ?? "");
+    $("#lon").value = isHome(name) ? "" : (lon ?? "");
+    $("#geoBtn").textContent = "Huidige locatie gebruiken";
+    document.querySelectorAll("#locChips .chip").forEach(c => c.classList.toggle("on", c.dataset.loc === name));
+  };
+  $("#locChips").onclick = e => {
+    const c = e.target.closest("[data-loc]");
+    if (c) setLoc(c.dataset.loc, c.dataset.lat || null, c.dataset.lon || null);
+  };
+  $("#locName").addEventListener("input", () => {
+    if (isHome($("#locName").value)) { $("#lat").value = ""; $("#lon").value = ""; }
+    document.querySelectorAll("#locChips .chip").forEach(c => c.classList.remove("on"));
+  });
+  sb.from("checkins").select("location_name, latitude, longitude").eq("user_id", state.user.id)
+    .not("location_name", "is", null).order("drunk_at", { ascending: false }).limit(60)
+    .then(({ data }) => {
+      const box = $("#locChips");
+      if (!box || !data) return;
+      const seen = new Set();
+      const recent = data.filter(r => {
+        const k = r.location_name.trim().toLowerCase();
+        if (isHome(k) || seen.has(k)) return false;
+        seen.add(k); return true;
+      }).slice(0, 4);
+      box.insertAdjacentHTML("beforeend", recent.map(r =>
+        `<button type="button" class="chip" data-loc="${esc(r.location_name)}" data-lat="${r.latitude ?? ""}" data-lon="${r.longitude ?? ""}">📍 ${esc(r.location_name)}</button>`).join(""));
+    });
+
   $("#geoBtn").onclick = () => {
     if (!navigator.geolocation) return toast("Je browser kan je locatie niet bepalen.");
     $("#geoBtn").disabled = true;
@@ -1579,12 +1643,13 @@ function renderCheckin() {
         }
       }
 
-      const lat = f.get("latitude"), lon = f.get("longitude");
+      const home = isHome(f.get("location_name"));
+      const lat = home ? null : f.get("latitude"), lon = home ? null : f.get("longitude");
       const { data: inserted, error } = await sb.from("checkins").insert({
         beer_id: beer.id,
         rating: Number(f.get("rating")),
         serving: f.get("serving") || null,
-        location_name: String(f.get("location_name") || "").trim() || null,
+        location_name: home ? HOME_LABEL : (String(f.get("location_name") || "").trim() || null),
         latitude: lat ? Number(lat) : null,
         longitude: lon ? Number(lon) : null,
         drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : new Date().toISOString(),
@@ -1878,6 +1943,7 @@ const BADGE_FAMILIES = {
   night:     { cat: "moment", name: "Nachtuil", emoji: "🦉", t: [1, 5, 10, 25], desc: many("Check in tussen middernacht en 4 uur ’s nachts", "Check # keer in tussen middernacht en 4 uur ’s nachts") },
   early:     { cat: "moment", name: "Vroege vogel", emoji: "🐓", t: [1, 5, 10], desc: many("Check in voor 12 uur ’s middags", "Check # keer in voor 12 uur ’s middags") },
   friday:    { cat: "moment", name: "Vrijdagmiddagborrel", emoji: "🎉", t: [1, 5, 25, 50], desc: many("Check in op vrijdag tussen 16 en 20 uur", "Check # keer in op vrijdag tussen 16 en 20 uur") },
+  home:      { cat: "moment", name: "Tapped at Home", emoji: "🏠", t: [1, 10, 50, 100, 250], desc: many("Check in met Tapped at Home", "Check # keer in met Tapped at Home") },
   weekend:   { cat: "moment", name: "Weekendkrijger", emoji: "🛋️", t: [10, 25, 100, 250], desc: t => `Check ${t} keer in op zaterdag of zondag` },
   monday:    { cat: "moment", name: "Maandagmiddel", emoji: "☕", t: [1, 5, 10], desc: many("Check in op een maandag", "Check # keer in op een maandag") },
   streak:    { cat: "moment", name: "Op dreef", emoji: "📆", t: [3, 5, 7, 14, 30], desc: t => `Check ${t} dagen achter elkaar in` },
@@ -1949,7 +2015,9 @@ function computeBadges(checkins, extra = {}) {
     if (wd === 0 || wd === 6) bump("weekend", B.weekend, iso);
     if (wd === 1) bump("monday", B.monday, iso);
 
-    const place = (c.location_name || "").trim().toLowerCase();
+    const atHome = isHome(c.location_name);
+    if (atHome) bump("home", B.home, iso);
+    const place = atHome ? "" : (c.location_name || "").trim().toLowerCase();
     if (place && !seenPlace.has(place)) { seenPlace.add(place); bump("places", B.places, iso); }
     const dk = dayKey(dt);
     if (place) { (perDayPlaces[dk] ||= new Set()).add(place); setCount("tour", B.tour, perDayPlaces[dk].size, iso); }
@@ -2219,6 +2287,110 @@ async function exportDatabase() {
 }
 
 
+// Uitgebreide export voor beheerders
+const MISSING_FIELDS = [
+  ["barcode", "Barcode", b => !b.barcode],
+  ["stijl", "Stijl", b => !b.style],
+  ["alcohol", "Alcohol", b => b.abv == null],
+  ["land", "Land", b => !b.country],
+  ["foto", "Foto", b => !b.image_path],
+  ["omschrijving", "Omschrijving", b => !b.description],
+];
+const ADMIN_CSV_COLS = ["id", ...CSV_COLS, "ontbreekt", "toegevoegd_door", "toegevoegd_op", "gewijzigd_door", "gewijzigd_op"];
+
+async function openExportDialog() {
+  if (!state.me?.is_admin) return exportDatabase();
+  openDialog(`<div class="loading">Database ophalen…</div>`);
+  let beers, people;
+  try {
+    [beers, { data: people }] = await Promise.all([
+      fetchAllBeers(),
+      sb.from("profiles").select("id, display_name").order("display_name"),
+    ]);
+  } catch (err) {
+    $("#dlgBody").innerHTML = `<p class="error">Laden lukte niet: ${esc(err.message)}</p>`;
+    return;
+  }
+  const nameOf = Object.fromEntries((people || []).map(p => [p.id, p.display_name || "Naamloos"]));
+  const me = state.user.id;
+  const missingOf = b => MISSING_FIELDS.filter(([, , test]) => test(b)).map(([, label]) => label);
+
+  const select = (who, fields) => beers.filter(b => {
+    if (who === "others" && b.created_by === me) return false;
+    if (who !== "all" && who !== "others" && b.created_by !== who) return false;
+    if (fields.length && !MISSING_FIELDS.some(([key, , test]) => fields.includes(key) && test(b))) return false;
+    return true;
+  });
+  const download = (list, suffix) => {
+    const rows = list.map(b => ({
+      id: b.id, naam: b.name, brouwerij: b.brewery, stijl: b.style, alcohol: b.abv,
+      land: b.country, barcode: b.barcode, omschrijving: b.description, foto: photoUrl(b.image_path),
+      ontbreekt: missingOf(b).join(", "),
+      toegevoegd_door: b.created_by ? (nameOf[b.created_by] || "Verwijderde gebruiker") : "",
+      toegevoegd_op: b.created_at ? b.created_at.slice(0, 10) : "",
+      gewijzigd_door: b.updated_by ? (nameOf[b.updated_by] || "Verwijderde gebruiker") : "",
+      gewijzigd_op: b.updated_by && b.updated_at ? b.updated_at.slice(0, 10) : "",
+    }));
+    if (!rows.length) return toast("Geen bieren gevonden voor deze keuze.");
+    downloadCsv(rows, ADMIN_CSV_COLS, `bierdatabase-${suffix}-${new Date().toISOString().slice(0, 10)}.csv`);
+    toast(`${rows.length} ${rows.length === 1 ? "bier" : "bieren"} geëxporteerd`);
+  };
+  const allFields = MISSING_FIELDS.map(([k]) => k);
+  const presets = [
+    ["others", "Niet door mij toegevoegd", select("others", [])],
+    ["missing", "Mist informatie", select("all", allFields)],
+    ["nocode", "Mist barcode", select("all", ["barcode"])],
+    ["all", "Alles", beers],
+  ];
+
+  $("#dlgBody").innerHTML = `
+    <div class="stack">
+      <h2>Exporteren</h2>
+      <div class="preset-grid">
+        ${presets.map(([k, label, list]) => `
+          <button type="button" class="preset" data-preset="${k}">
+            <b>${label}</b><span class="muted small">${list.length} ${list.length === 1 ? "bier" : "bieren"}</span>
+          </button>`).join("")}
+      </div>
+      <div class="panel stack">
+        <h3>Zelf samenstellen</h3>
+        <label class="field"><span>Toegevoegd door</span>
+          <select class="input" id="expWho">
+            <option value="all">Iedereen</option>
+            <option value="others">Iedereen behalve ik</option>
+            ${(people || []).map(p => `<option value="${p.id}">${esc(p.display_name || "Naamloos")}${p.id === me ? " (ik)" : ""}</option>`).join("")}
+          </select>
+        </label>
+        <div>
+          <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Alleen bieren waarvan ontbreekt</span>
+          <div class="check-grid">
+            ${MISSING_FIELDS.map(([k, label]) => `<label class="check"><input type="checkbox" value="${k}" data-missing> ${label}</label>`).join("")}
+          </div>
+          <p class="muted small" style="margin-top:6px">Niets aangevinkt betekent: ook complete bieren. Meerdere aangevinkt: minstens één daarvan ontbreekt.</p>
+        </div>
+        <p id="expCount"></p>
+        <button class="btn" type="button" id="expGo">Download CSV</button>
+      </div>
+      <p class="muted small">Tip: vul de ontbrekende gegevens aan in Excel en importeer het bestand weer. Dankzij de kolom id herkent de app elk bier precies, en worden alleen lege velden aangevuld.</p>
+    </div>`;
+
+  const custom = () => select($("#expWho").value, [...document.querySelectorAll("[data-missing]:checked")].map(c => c.value));
+  const count = () => { const n = custom().length; $("#expCount").innerHTML = `Dit levert <b>${n}</b> ${n === 1 ? "bier" : "bieren"} op.`; };
+  $("#expWho").onchange = count;
+  document.querySelectorAll("[data-missing]").forEach(c => c.onchange = count);
+  count();
+  $("#expGo").onclick = () => {
+    const fields = [...document.querySelectorAll("[data-missing]:checked")].map(c => c.value);
+    const who = $("#expWho").value;
+    const suffix = [who === "all" ? "" : who === "others" ? "anderen" : (nameOf[who] || "persoon").toLowerCase().replace(/[^a-z0-9]+/g, "-"), fields.length ? "zonder-" + fields.join("-") : ""].filter(Boolean).join("-") || "alles";
+    download(custom(), suffix);
+  };
+  document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
+    const [k, , list] = presets.find(p => p[0] === b.dataset.preset);
+    download(list, { others: "niet-door-mij", missing: "mist-informatie", nocode: "zonder-barcode", all: "alles" }[k]);
+  });
+}
+
 function downloadTemplate() {
   downloadCsv([
     { naam: "Zatte", brouwerij: "Brouwerij ’t IJ", stijl: "Tripel", alcohol: 8, land: "Nederland", barcode: "", omschrijving: "Het eerste bier van ’t IJ", foto: "" },
@@ -2227,6 +2399,7 @@ function downloadTemplate() {
 
 // Kolomnamen die we herkennen (Nederlands, Engels en Untappd-export)
 const CSV_SYNONYMS = {
+  id: ["id", "bier_id", "bierid"],
   name: ["naam", "bier", "biernaam", "name", "beer", "beername", "beer_name", "product", "productname", "product_name", "title"],
   brewery: ["brouwerij", "brouwer", "brewery", "brewer", "brewery_name", "breweryname", "brand", "brands", "merk"],
   style: ["stijl", "biertype", "soort", "type", "style", "beer_type", "beertype", "beer_style"],
@@ -2236,7 +2409,7 @@ const CSV_SYNONYMS = {
   description: ["omschrijving", "beschrijving", "description", "notes", "beer_description"],
   image: ["foto", "afbeelding", "image", "photo", "photo_url", "image_url", "beer_label", "label"],
 };
-const FIELD_LABELS = { name: "Naam", brewery: "Brouwerij", style: "Stijl", abv: "Alcohol", country: "Land", barcode: "Barcode", description: "Omschrijving", image: "Foto" };
+const FIELD_LABELS = { id: "Id", name: "Naam", brewery: "Brouwerij", style: "Stijl", abv: "Alcohol", country: "Land", barcode: "Barcode", description: "Omschrijving", image: "Foto" };
 
 function mapColumns(headers) {
   const norm = h => String(h).toLowerCase().replace(/^\ufeff/, "").trim().replace(/[\s.%()-]+/g, "_").replace(/^_+|_+$/g, "");
@@ -2262,17 +2435,29 @@ function rowToBeer(r, map) {
   const num = v => { const n = parseFloat(String(v).replace(",", ".").replace(/[^\d.]/g, "")); return isNaN(n) ? null : n; };
   const name = get("name");
   if (!name) return { skip: "geen naam" };
-  let barcode = cleanBarcode(get("barcode"));
-  let badCode = false;
+  const rawCode = get("barcode");
+  let barcode = cleanBarcode(rawCode);
+  let badCode = null;
   if (barcode && !validBarcode(barcode)) {
     // Excel laat voorloopnullen weg: probeer ze terug te zetten
     const fixed = [12, 13, 14].map(n => barcode.padStart(n, "0")).find(validBarcode);
-    if (fixed) barcode = fixed; else { barcode = ""; badCode = true; }
+    if (fixed) barcode = fixed;
+    else {
+      badCode = {
+        raw: rawCode,
+        reason: /e\+/i.test(rawCode) ? "Excel heeft er een wetenschappelijk getal van gemaakt; de laatste cijfers zijn verloren"
+          : ![8, 12, 13, 14].includes(barcode.length) ? `heeft ${barcode.length} cijfers, een barcode heeft er 8, 12, 13 of 14`
+          : "het controlecijfer klopt niet, waarschijnlijk een tikfout",
+      };
+      barcode = "";
+    }
   }
   const abv = num(get("abv"));
   const ct = normCountry(get("country"));
   const img = get("image");
+  const id = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(get("id")) ? get("id").toLowerCase() : null;
   return {
+    id,
     beer: {
       name: name.slice(0, 200),
       brewery: get("brewery") || null,
@@ -2317,18 +2502,19 @@ function openImportDialog() {
       const byCode = new Map(existing.filter(b => b.barcode).map(b => [b.barcode, b]));
       const key = b => `${(b.name || "").toLowerCase().trim()}|${(b.brewery || "").toLowerCase().trim()}`;
       const byName = new Map(existing.map(b => [key(b), b]));
+      const byId = new Map(existing.map(b => [b.id, b]));
 
-      const plan = { insert: [], fill: [], same: 0, skipped: 0, badCodes: 0, dupes: 0 };
+      const plan = { insert: [], fill: [], same: 0, skipped: 0, badCodes: 0, dupes: 0, badList: [], dupeList: [] };
       const seen = new Set();
       for (const r of rows) {
         const res = rowToBeer(r, map);
         if (res.skip) { plan.skipped++; continue; }
-        if (res.badCode) plan.badCodes++;
+        if (res.badCode) { plan.badCodes++; plan.badList.push({ naam: res.beer.name, brouwerij: res.beer.brewery, barcode: res.badCode.raw, reden: res.badCode.reason }); }
         const nb = res.beer;
-        const k = nb.barcode || key(nb);
-        if (seen.has(k)) { plan.dupes++; continue; }
+        const k = res.id || nb.barcode || key(nb);
+        if (seen.has(k)) { plan.dupes++; plan.dupeList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: nb.barcode }); continue; }
         seen.add(k);
-        const match = (nb.barcode && byCode.get(nb.barcode)) || byName.get(key(nb));
+        const match = (res.id && byId.get(res.id)) || (nb.barcode && byCode.get(nb.barcode)) || byName.get(key(nb));
         if (!match) {
           if (nb.barcode && byCode.has(nb.barcode)) { plan.same++; continue; }
           plan.insert.push({ ...nb, source: "csv" });
@@ -2363,6 +2549,24 @@ function openImportDialog() {
               ${plan.badCodes ? `<li><b>${plan.badCodes}</b> ${plan.badCodes === 1 ? "ongeldige barcode" : "ongeldige barcodes"} weggelaten (het bier zelf wordt wel toegevoegd)</li>` : ""}
             </ul>
           </div>
+          ${plan.badList.length ? `
+            <details class="panel">
+              <summary><b>Ongeldige barcodes bekijken (${plan.badList.length})</b></summary>
+              <div class="table-scroll"><table class="preview">
+                <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode in bestand</th><th>Reden</th></tr></thead>
+                <tbody>${plan.badList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td><td class="wrap">${esc(r.reden)}</td></tr>`).join("")}</tbody>
+              </table></div>
+              <button class="btn ghost small" type="button" id="dlBad" style="margin-top:10px">Download als CSV</button>
+            </details>` : ""}
+          ${plan.dupeList.length ? `
+            <details class="panel">
+              <summary><b>Dubbele regels bekijken (${plan.dupeList.length})</b></summary>
+              <p class="muted small" style="margin-top:8px">Deze regels hebben dezelfde barcode, of dezelfde naam en brouwerij, als een eerdere regel in je bestand. Alleen de eerste is meegenomen.</p>
+              <div class="table-scroll"><table class="preview">
+                <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode</th></tr></thead>
+                <tbody>${plan.dupeList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td></tr>`).join("")}</tbody>
+              </table></div>
+            </details>` : ""}
           ${preview.length ? `
             <div>
               <h3>Voorbeeld van nieuwe bieren</h3>
@@ -2378,6 +2582,8 @@ function openImportDialog() {
           <div id="csvProgress" hidden><span class="bar"><span style="width:0%"></span></span><p class="muted small" style="margin-top:6px"></p></div>
         </div>`;
 
+      const dlBad = $("#dlBad");
+      if (dlBad) dlBad.onclick = () => downloadCsv(plan.badList, ["naam", "brouwerij", "barcode", "reden"], "ongeldige-barcodes.csv");
       const go = $("#csvGo");
       if (go) go.onclick = async () => {
         go.disabled = true;
@@ -2509,7 +2715,7 @@ async function renderDatabase() {
   $("#dbSearch").oninput = () => { clearTimeout(t); t = setTimeout(() => load(false), 300); };
   $("#dbFilter").onchange = () => load(false);
   $("#dbMore").onclick = () => load(true);
-  $("#dbExport").onclick = exportDatabase;
+  $("#dbExport").onclick = openExportDialog;
   if ($("#dbImport")) $("#dbImport").onclick = openImportDialog;
   $("#dbList").onclick = e => {
     const r = e.target.closest("[data-dbbeer]");
