@@ -14,6 +14,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <style>
 :root {
   --paper: #F3F5EF;
@@ -251,6 +252,11 @@ textarea.input { min-height: 92px; resize: vertical; }
 .friend-stat { display: flex; align-items: center; gap: 10px; }
 .friend-stat .avatar { width: 32px; height: 32px; font-size: .85rem; }
 .db-list { display: grid; gap: 8px; }
+.import-sum { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); margin-top: 8px; }
+table.preview { border-collapse: collapse; width: 100%; font-size: .88rem; }
+table.preview th, table.preview td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.preview th { background: var(--surface); font-weight: 700; }
 .db-row {
   display: grid; grid-template-columns: 60px 1fr; gap: 12px; align-items: center; width: 100%; text-align: left;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 8px; cursor: pointer; color: inherit;
@@ -507,7 +513,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-21.10";
+const APP_VERSION = "2026-10-22.1";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -2164,6 +2170,257 @@ function celebrate(newOnes) {
 }
 
 // ---------------------------------------------------------------------
+// CSV: exporteren en importeren van de bierdatabase
+// ---------------------------------------------------------------------
+async function fetchAllBeers() {
+  let all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from("beers").select("*").order("name").range(from, from + 999);
+    if (error) throw error;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+  }
+  return all;
+}
+
+function downloadCsv(rows, cols, filename) {
+  const cell = v => {
+    if (v == null) return "";
+    const s = typeof v === "number" ? String(v).replace(".", ",") : String(v);
+    return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [cols.join(";"), ...rows.map(r => cols.map(c => cell(r[c])).join(";"))].join("\r\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+const CSV_COLS = ["naam", "brouwerij", "stijl", "alcohol", "ibu", "land", "barcode", "omschrijving", "foto"];
+
+async function exportDatabase() {
+  toast("Database ophalen…");
+  try {
+    const beers = await fetchAllBeers();
+    const rows = beers.map(b => ({
+      naam: b.name, brouwerij: b.brewery, stijl: b.style, alcohol: b.abv, ibu: b.ibu,
+      land: b.country, barcode: b.barcode, omschrijving: b.description, foto: photoUrl(b.image_path),
+    }));
+    downloadCsv(rows, CSV_COLS, `bierdatabase-${new Date().toISOString().slice(0, 10)}.csv`);
+    toast(`${rows.length} bieren geëxporteerd`);
+  } catch (err) { toast("Exporteren lukte niet: " + err.message); }
+}
+
+function downloadTemplate() {
+  downloadCsv([
+    { naam: "Zatte", brouwerij: "Brouwerij ’t IJ", stijl: "Tripel", alcohol: 8, ibu: 30, land: "Nederland", barcode: "", omschrijving: "Het eerste bier van ’t IJ", foto: "" },
+  ], CSV_COLS, "bierdatabase-voorbeeld.csv");
+}
+
+// Kolomnamen die we herkennen (Nederlands, Engels en Untappd-export)
+const CSV_SYNONYMS = {
+  name: ["naam", "bier", "biernaam", "name", "beer", "beername", "beer_name", "product", "productname", "product_name", "title"],
+  brewery: ["brouwerij", "brouwer", "brewery", "brewer", "brewery_name", "breweryname", "brand", "brands", "merk"],
+  style: ["stijl", "biertype", "soort", "type", "style", "beer_type", "beertype", "beer_style"],
+  abv: ["alcohol", "alc", "abv", "alcoholpercentage", "alcohol_percentage", "beer_abv", "vol", "alcvol"],
+  ibu: ["ibu", "bitterheid", "beer_ibu"],
+  country: ["land", "herkomst", "country", "brewery_country", "origin", "countries"],
+  barcode: ["barcode", "ean", "ean13", "gtin", "upc", "code"],
+  description: ["omschrijving", "beschrijving", "description", "notes", "beer_description"],
+  image: ["foto", "afbeelding", "image", "photo", "photo_url", "image_url", "beer_label", "label"],
+};
+const FIELD_LABELS = { name: "Naam", brewery: "Brouwerij", style: "Stijl", abv: "Alcohol", ibu: "IBU", country: "Land", barcode: "Barcode", description: "Omschrijving", image: "Foto" };
+
+function mapColumns(headers) {
+  const norm = h => String(h).toLowerCase().replace(/^\ufeff/, "").trim().replace(/[\s.%()-]+/g, "_").replace(/^_+|_+$/g, "");
+  const map = {};
+  for (const [field, names] of Object.entries(CSV_SYNONYMS)) {
+    const h = headers.find(h => names.includes(norm(h)) || names.includes(norm(h).replace(/_/g, "")));
+    if (h) map[field] = h;
+  }
+  return map;
+}
+
+async function readCsvFile(file) {
+  const buf = await file.arrayBuffer();
+  let text;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+  catch { text = new TextDecoder("windows-1252").decode(buf); }
+  const res = Papa.parse(text.replace(/^\ufeff/, ""), { header: true, skipEmptyLines: "greedy", transformHeader: h => h.trim() });
+  return { rows: res.data, headers: res.meta.fields || [] };
+}
+
+function rowToBeer(r, map) {
+  const get = f => (map[f] ? String(r[map[f]] ?? "").trim() : "");
+  const num = v => { const n = parseFloat(String(v).replace(",", ".").replace(/[^\d.]/g, "")); return isNaN(n) ? null : n; };
+  const name = get("name");
+  if (!name) return { skip: "geen naam" };
+  let barcode = cleanBarcode(get("barcode")).replace(/\.0+$/, "");
+  let badCode = false;
+  if (barcode && !validBarcode(barcode)) {
+    // Excel laat voorloopnullen weg: probeer ze terug te zetten
+    const fixed = [12, 13, 14].map(n => barcode.padStart(n, "0")).find(validBarcode);
+    if (fixed) barcode = fixed; else { barcode = ""; badCode = true; }
+  }
+  const abv = num(get("abv"));
+  const ibu = num(get("ibu"));
+  const ct = normCountry(get("country"));
+  const img = get("image");
+  return {
+    beer: {
+      name: name.slice(0, 200),
+      brewery: get("brewery") || null,
+      style: get("style") || null,
+      abv: abv != null && abv >= 0 && abv <= 70 ? abv : null,
+      ibu: ibu != null && ibu >= 0 && ibu <= 300 ? Math.round(ibu) : null,
+      country: ct ? ct.name : null,
+      barcode: barcode || null,
+      description: get("description") || null,
+      image_path: /^https:\/\//.test(img) ? img : null,
+    },
+    badCode,
+  };
+}
+
+function openImportDialog() {
+  openDialog(`
+    <div class="stack">
+      <h2>CSV importeren</h2>
+      <p>Kies een CSV-bestand met bieren. De app herkent kolommen als naam, brouwerij, stijl, alcohol, IBU, land, barcode en omschrijving, ook in het Engels of uit een Untappd-export.</p>
+      <p class="muted small">Je ziet eerst een voorbeeld; er wordt pas iets opgeslagen als je op Importeren klikt.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <label class="btn" style="cursor:pointer"><input type="file" accept=".csv,text/csv" id="csvFile" hidden>CSV-bestand kiezen</label>
+        <button class="btn ghost" type="button" id="csvTemplate">Voorbeeldbestand downloaden</button>
+      </div>
+      <div id="csvResult"></div>
+    </div>`);
+  $("#csvTemplate").onclick = downloadTemplate;
+  $("#csvFile").onchange = async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const box = $("#csvResult");
+    box.innerHTML = `<p class="muted">Bestand lezen en vergelijken met de database…</p>`;
+    try {
+      if (typeof Papa === "undefined") throw new Error("De CSV-lezer kon niet worden geladen. Ververs de pagina.");
+      const { rows, headers } = await readCsvFile(file);
+      const map = mapColumns(headers);
+      if (!map.name) {
+        box.innerHTML = `<p class="error">Er is geen kolom met de naam van het bier gevonden. Gevonden kolommen: ${esc(headers.join(", "))}. Noem de kolom bijvoorbeeld “naam”.</p>`;
+        return;
+      }
+      const existing = await fetchAllBeers();
+      const byCode = new Map(existing.filter(b => b.barcode).map(b => [b.barcode, b]));
+      const key = b => `${(b.name || "").toLowerCase().trim()}|${(b.brewery || "").toLowerCase().trim()}`;
+      const byName = new Map(existing.map(b => [key(b), b]));
+
+      const plan = { insert: [], fill: [], same: 0, skipped: 0, badCodes: 0, dupes: 0 };
+      const seen = new Set();
+      for (const r of rows) {
+        const res = rowToBeer(r, map);
+        if (res.skip) { plan.skipped++; continue; }
+        if (res.badCode) plan.badCodes++;
+        const nb = res.beer;
+        const k = nb.barcode || key(nb);
+        if (seen.has(k)) { plan.dupes++; continue; }
+        seen.add(k);
+        const match = (nb.barcode && byCode.get(nb.barcode)) || byName.get(key(nb));
+        if (!match) {
+          if (nb.barcode && byCode.has(nb.barcode)) { plan.same++; continue; }
+          plan.insert.push({ ...nb, source: "csv" });
+          continue;
+        }
+        const patch = {};
+        for (const f of ["brewery", "style", "abv", "ibu", "country", "barcode", "description", "image_path"]) {
+          if ((match[f] == null || match[f] === "") && nb[f] != null && nb[f] !== "") {
+            if (f === "barcode" && byCode.has(nb[f])) continue;
+            patch[f] = nb[f];
+          }
+        }
+        if (Object.keys(patch).length) plan.fill.push({ id: match.id, name: match.name, patch });
+        else plan.same++;
+      }
+
+      const preview = plan.insert.slice(0, 5);
+      box.innerHTML = `
+        <div class="stack" style="margin-top:8px">
+          <div class="panel stack">
+            <h3>Herkende kolommen</h3>
+            <p class="small">${Object.entries(map).map(([f, h]) => `<b>${FIELD_LABELS[f]}</b> uit “${esc(h)}”`).join(", ")}</p>
+            ${headers.filter(h => !Object.values(map).includes(h)).length ? `<p class="muted small">Niet gebruikt: ${esc(headers.filter(h => !Object.values(map).includes(h)).join(", "))}</p>` : ""}
+          </div>
+          <div class="panel">
+            <ul class="import-sum">
+              <li><b>${plan.insert.length}</b> ${plan.insert.length === 1 ? "nieuw bier" : "nieuwe bieren"}</li>
+              <li><b>${plan.fill.length}</b> ${plan.fill.length === 1 ? "bestaand bier" : "bestaande bieren"} met aan te vullen gegevens</li>
+              <li><b>${plan.same}</b> ${plan.same === 1 ? "staat" : "staan"} al volledig in de database</li>
+              ${plan.dupes ? `<li><b>${plan.dupes}</b> dubbel in het bestand, één keer meegenomen</li>` : ""}
+              ${plan.skipped ? `<li><b>${plan.skipped}</b> ${plan.skipped === 1 ? "regel" : "regels"} zonder naam, overgeslagen</li>` : ""}
+              ${plan.badCodes ? `<li><b>${plan.badCodes}</b> ${plan.badCodes === 1 ? "ongeldige barcode" : "ongeldige barcodes"} weggelaten (het bier zelf wordt wel toegevoegd)</li>` : ""}
+            </ul>
+          </div>
+          ${preview.length ? `
+            <div>
+              <h3>Voorbeeld van nieuwe bieren</h3>
+              <div class="table-scroll"><table class="preview">
+                <thead><tr><th>Naam</th><th>Brouwerij</th><th>Stijl</th><th>Alc.</th><th>Land</th><th>Barcode</th></tr></thead>
+                <tbody>${preview.map(b => `<tr><td>${esc(b.name)}</td><td>${esc(b.brewery)}</td><td>${esc(b.style)}</td><td>${b.abv != null ? nf(b.abv) + "%" : ""}</td><td>${esc(b.country)}</td><td>${esc(b.barcode)}</td></tr>`).join("")}</tbody>
+              </table></div>
+            </div>` : ""}
+          ${plan.fill.length ? `<label class="switch"><span>Lege velden van bestaande bieren aanvullen<br><span class="muted small">Bestaande gegevens worden nooit overschreven.</span></span><input type="checkbox" id="csvFill" checked></label>` : ""}
+          ${plan.insert.length || plan.fill.length
+            ? `<button class="btn block" type="button" id="csvGo">Importeren</button>`
+            : `<p class="muted">Er is niets nieuws om te importeren.</p>`}
+          <div id="csvProgress" hidden><span class="bar"><span style="width:0%"></span></span><p class="muted small" style="margin-top:6px"></p></div>
+        </div>`;
+
+      const go = $("#csvGo");
+      if (go) go.onclick = async () => {
+        go.disabled = true;
+        const fill = $("#csvFill") ? $("#csvFill").checked : false;
+        const jobs = plan.insert.length + (fill ? plan.fill.length : 0);
+        let done = 0, failed = 0;
+        const prog = $("#csvProgress"); prog.hidden = false;
+        const tick = () => {
+          prog.querySelector(".bar > span").style.width = `${Math.round(done / Math.max(1, jobs) * 100)}%`;
+          prog.querySelector("p").textContent = `${done} van ${jobs} verwerkt${failed ? `, ${failed} mislukt` : ""}`;
+        };
+        for (let i = 0; i < plan.insert.length; i += 200) {
+          const chunk = plan.insert.slice(i, i + 200);
+          const { error } = await sb.from("beers").insert(chunk);
+          if (error) {
+            // Eén foute regel mag de rest niet tegenhouden: dan per stuk
+            for (const b of chunk) { const { error: e1 } = await sb.from("beers").insert(b); if (e1) failed++; done++; tick(); }
+          } else { done += chunk.length; tick(); }
+        }
+        if (fill) {
+          for (let i = 0; i < plan.fill.length; i += 5) {
+            await Promise.all(plan.fill.slice(i, i + 5).map(async f => {
+              const { error } = await sb.from("beers").update(f.patch).eq("id", f.id);
+              if (error) failed++;
+              done++;
+            }));
+            tick();
+          }
+        }
+        tick();
+        $("#csvResult").insertAdjacentHTML("beforeend", `
+          <div class="panel" style="margin-top:12px">
+            <h3>Klaar</h3>
+            <p>${plan.insert.length} ${plan.insert.length === 1 ? "bier" : "bieren"} toegevoegd${fill && plan.fill.length ? ` en ${plan.fill.length} aangevuld` : ""}.${failed ? ` ${failed} lukte niet, bijvoorbeeld door een barcode die al bij een ander bier hoort.` : ""}</p>
+            <button class="btn" type="button" id="csvDone">Naar de database</button>
+          </div>`);
+        $("#csvDone").onclick = () => { closeDialog(); renderDatabase(); };
+      };
+    } catch (err) {
+      box.innerHTML = `<p class="error">${esc(err.message || err)}</p>`;
+    } finally {
+      e.target.value = "";
+    }
+  };
+}
+
+// ---------------------------------------------------------------------
 // Bierdatabase: bladeren, toevoegen zonder inchecken, aanvullen
 // ---------------------------------------------------------------------
 const DB_PAGE = 30;
@@ -2187,6 +2444,10 @@ async function renderDatabase() {
           <p class="muted">${total ?? 0} bieren, waarvan ${withCode ?? 0} met barcode</p>
         </div>
         <a class="btn" href="#database/nieuw">Bier toevoegen</a>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ghost small" type="button" id="dbExport">Exporteren (CSV)</button>
+        ${state.me?.is_admin ? `<button class="btn ghost small" type="button" id="dbImport">Importeren (CSV)</button>` : ""}
       </div>
       <div class="filters">
         <input class="input search" type="search" id="dbSearch" placeholder="Zoek op bier of brouwerij" aria-label="Zoeken">
@@ -2243,6 +2504,8 @@ async function renderDatabase() {
   $("#dbSearch").oninput = () => { clearTimeout(t); t = setTimeout(() => load(false), 300); };
   $("#dbFilter").onchange = () => load(false);
   $("#dbMore").onclick = () => load(true);
+  $("#dbExport").onclick = exportDatabase;
+  if ($("#dbImport")) $("#dbImport").onclick = openImportDialog;
   $("#dbList").onclick = e => {
     const r = e.target.closest("[data-dbbeer]");
     if (r) showDbBeer(items.find(b => b.id === r.dataset.dbbeer));
