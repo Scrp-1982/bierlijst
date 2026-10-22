@@ -284,9 +284,11 @@ table.diff td { white-space: normal; }
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--hop); flex: none; margin: 0; }
 .pairs { display: grid; gap: 8px; margin-top: 8px; }
-.pair { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; overflow-wrap: anywhere; }
+.pair { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); overflow-wrap: anywhere; }
+.pair.on { border-color: var(--hop); background: var(--hop-soft); }
+.pair-main, .pair-over { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.pair-over { padding: 8px 0 0 32px; border-top: 1px dashed var(--line); }
 .pair input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--hop); flex: none; }
-.pair:has(input:checked) { border-color: var(--hop); background: var(--hop-soft); }
 label.switch.panel { padding: 16px 18px; }
 .import-sum { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); margin-top: 8px; }
@@ -561,7 +563,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.15";
+const APP_VERSION = "2026-10-22.16";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -583,7 +585,8 @@ function esc(v) {
 }
 const nf = (n, d = 1) => Number(n).toLocaleString("nl-NL", { minimumFractionDigits: d, maximumFractionDigits: 2 });
 // Tijden: elke check-in onthoudt de tijdzone waar hij gedronken is
-const DEVICE_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam"; } catch { return "Europe/Amsterdam"; } })();
+function currentTz() { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam"; } catch { return "Europe/Amsterdam"; } }
+const DEVICE_TZ = currentTz();
 const _tzFmt = new Map();
 function partsIn(iso, tz) {
   const z = tz || DEVICE_TZ;
@@ -1735,7 +1738,7 @@ function renderCheckin() {
         latitude: lat ? Number(lat) : null,
         longitude: lon ? Number(lon) : null,
         drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : new Date().toISOString(),
-        tz: DEVICE_TZ,
+        tz: currentTz(),
         notes: clampChars(String(f.get("notes") || "").trim(), 300) || null,
         photo_path,
       }).select("id").single();
@@ -3403,6 +3406,10 @@ function utNameVariants(name) {
   const parts = clean.split(/\s+\/\s+/).map(s => s.trim()).filter(Boolean);
   return parts.length > 1 ? [clean, ...parts] : [clean];
 }
+function cleanUntappdName(name) {
+  const v = utNameVariants(name);
+  return (v.length > 1 ? v[1] : v[0]).slice(0, 200);
+}
 function untappdScore(u, d) {
   const bu = u.bt, bb = d.bt;
   const inAll = (set, a, b) => set.size > 0 && [...set].every(t => a.has(t) || b.has(t));
@@ -3424,7 +3431,7 @@ const UT_STYLES = [
   [/saison|farmhouse/, "Saison"], [/smoked|rauch/, "Rauchbier"], [/k[öo]lsch/, "Kölsch"], [/altbier/, "Altbier"],
   [/m[äa]rzen|oktoberfest|festbier/, "Märzen"], [/wheat|weizen|witbier|weiss|weiß/, "Witbier/Weizen"],
   [/bock/, "Bock"], [/pilsner|pilsener/, "Pilsener"], [/lager|helles/, "Lager / Helles"],
-  [/strong dark/, "Bruin"], [/blonde|golden/, "Blond"], [/red ale|amber/, "Amber"], [/brown/, "Bruin"],
+  [/strong dark/, "Bruin"], [/blonde|golden|enkel|patersbier/, "Blond"], [/red ale|amber/, "Amber"], [/brown/, "Bruin"],
 ];
 function mapUntappdStyle(t) {
   const s = String(t || "").toLowerCase();
@@ -3594,12 +3601,19 @@ async function analyzeUntappd(file) {
       else plan.fresh.push({ g });
     }
     const photos = todo.filter(r => /^https:\/\//.test(r.photo_url || "")).length;
+    const editor = !!(state.me?.is_admin || state.me?.is_db_editor);
     const pairRow = (p, i, list, checked) => `
-      <label class="pair">
-        <input type="checkbox" data-list="${list}" data-i="${i}" ${checked ? "checked" : ""}>
-        <span><b>${esc(p.g.name)}</b> <span class="muted small">${esc(p.g.brewery)}</span><br>
-        <span class="small">is in de database: <b>${esc(p.beer.name)}</b> <span class="muted">${esc(p.beer.brewery || "")}</span></span></span>
-      </label>`;
+      <div class="pair ${checked ? "on" : ""}">
+        <label class="pair-main">
+          <input type="checkbox" data-list="${list}" data-i="${i}" ${checked ? "checked" : ""}>
+          <span><b>${esc(p.g.name)}</b> <span class="muted small">${esc(p.g.brewery)}</span><br>
+          <span class="small">is in de database: <b>${esc(p.beer.name)}</b> <span class="muted">${esc(p.beer.brewery || "")}</span></span></span>
+        </label>
+        ${editor ? `<label class="pair-over small" ${checked ? "" : "hidden"}>
+          <input type="checkbox" data-over="${list}" data-i="${i}">
+          <span>Gegevens van Untappd overnemen: wordt <b>${esc(cleanUntappdName(p.g.name))}</b>, ${esc(p.g.brewery)}, ${esc(mapUntappdStyle(p.g.type) || "")}, ${esc(p.g.abv)}%</span>
+        </label>` : ""}
+      </div>`;
 
     box.innerHTML = `
       <div class="stack">
@@ -3611,6 +3625,7 @@ async function analyzeUntappd(file) {
             <li>Tijden zoals ze daar waren, in ${Object.keys(tzCount).length === 1 ? "één tijdzone" : Object.keys(tzCount).length + " tijdzones"}: ${Object.entries(tzCount).sort((a, b) => b[1] - a[1]).map(([z, n]) => `${esc(z.split("/").pop().replace(/_/g, " "))} (${n})`).join(", ")}</li>
           </ul>
           ${haveLookup ? "" : `<p class="small error" style="margin-top:8px">De tijdzones konden niet worden bepaald; alle tijden worden als Nederlandse tijd opgeslagen.</p>`}
+          ${editor ? `<p class="muted small" style="margin-top:8px">Bij herkende bieren worden lege velden (stijl, alcohol, land) automatisch aangevuld met de gegevens van Untappd. Bestaande gegevens blijven staan, tenzij je bij een bier “Gegevens van Untappd overnemen” aanvinkt.</p>` : ""}
         </div>
         ${plan.maybe.length ? `
           <div class="panel stack">
@@ -3637,10 +3652,19 @@ async function analyzeUntappd(file) {
         <div id="utProgress" class="panel stack" hidden><span class="bar"><span style="width:0%"></span></span><p class="muted small"></p></div>
       </div>`;
 
+    box.onchange = e => {
+      const cb = e.target.closest("[data-list]");
+      if (!cb) return;
+      const pair = cb.closest(".pair");
+      pair.classList.toggle("on", cb.checked);
+      const over = pair.querySelector(".pair-over");
+      if (over) { over.hidden = !cb.checked; if (!cb.checked) over.querySelector("input").checked = false; }
+    };
     const go = $("#utGo");
     if (go) go.onclick = () => {
-      const pick = list => plan[list].filter((p, i) => document.querySelector(`[data-list="${list}"][data-i="${i}"]`)?.checked);
-      const unpick = list => plan[list].filter((p, i) => !document.querySelector(`[data-list="${list}"][data-i="${i}"]`)?.checked);
+      const isOn = (attr, list, i) => !!document.querySelector(`[${attr}="${list}"][data-i="${i}"]`)?.checked;
+      const pick = list => plan[list].map((p, i) => ({ ...p, over: isOn("data-over", list, i) })).filter((p, i) => isOn("data-list", list, i));
+      const unpick = list => plan[list].filter((p, i) => !isOn("data-list", list, i));
       const matched = [...plan.known, ...pick("sure"), ...pick("maybe")];
       const fresh = [...plan.fresh, ...unpick("sure").map(p => ({ g: p.g })), ...unpick("maybe").map(p => ({ g: p.g }))];
       runUntappdImport(matched, fresh, todo, $("#utPhotos") ? $("#utPhotos").checked : false);
@@ -3689,7 +3713,7 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
         const firstPhoto = g.rows.map(r => photoOf.get(String(r.checkin_id))).find(Boolean) || null;
         const abv = parseFloat(g.abv);
         return {
-          name: g.name.slice(0, 200), brewery: g.brewery || null, style: mapUntappdStyle(g.type),
+          name: cleanUntappdName(g.name), brewery: g.brewery || null, style: mapUntappdStyle(g.type),
           abv: isFinite(abv) ? abv : null, country: normCountry(g.country)?.name || null,
           untappd_id: Number(g.bid) || null, image_path: firstPhoto, source: "untappd",
         };
@@ -3701,14 +3725,38 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
       step("Nieuwe bieren toevoegen", Math.min(i + 100, fresh.length), fresh.length);
     }
 
-    // 3. Untappd-nummer vastleggen bij herkende bieren
-    const toLink = matched.filter(p => !p.beer.untappd_id);
-    for (let i = 0; i < toLink.length; i += 5) {
-      await Promise.all(toLink.slice(i, i + 5).map(async p => {
-        const { error } = await sb.from("beers").update({ untappd_id: Number(p.g.bid) }).eq("id", p.beer.id);
-        if (!error) result.beersLinked++;
+    // 3. Herkende bieren: Untappd-nummer vastleggen, lege velden aanvullen
+    //    en, als dat is aangevinkt, de gegevens van Untappd overnemen
+    const editor = !!(state.me?.is_admin || state.me?.is_db_editor);
+    const patches = matched.map(p => {
+      const abv = parseFloat(p.g.abv);
+      const ut = {
+        name: cleanUntappdName(p.g.name), brewery: p.g.brewery || null, style: mapUntappdStyle(p.g.type),
+        abv: isFinite(abv) ? abv : null, country: normCountry(p.g.country)?.name || null,
+      };
+      const patch = {};
+      if (!p.beer.untappd_id) patch.untappd_id = Number(p.g.bid);
+      if (editor) {
+        if (p.over) {
+          for (const k of ["name", "brewery", "style", "abv", "country"]) if (ut[k] != null && ut[k] !== "" && String(ut[k]) !== String(p.beer[k] ?? "")) patch[k] = ut[k];
+        } else {
+          for (const k of ["style", "abv", "country"]) if ((p.beer[k] == null || p.beer[k] === "") && ut[k] != null && ut[k] !== "") patch[k] = ut[k];
+        }
+      }
+      return { p, patch };
+    }).filter(x => Object.keys(x.patch).length);
+    for (let i = 0; i < patches.length; i += 5) {
+      await Promise.all(patches.slice(i, i + 5).map(async ({ p, patch }) => {
+        let { error } = await sb.from("beers").update(patch).eq("id", p.beer.id);
+        // Lukt het bijwerken niet (bijvoorbeeld door rechten), dan in elk geval het Untappd-nummer
+        if (error && patch.untappd_id) ({ error } = await sb.from("beers").update({ untappd_id: patch.untappd_id }).eq("id", p.beer.id));
+        if (!error) {
+          if (patch.untappd_id) result.beersLinked++;
+          if (p.over && Object.keys(patch).some(k => k !== "untappd_id")) result.beersOverwritten = (result.beersOverwritten || 0) + 1;
+          else if (Object.keys(patch).some(k => k !== "untappd_id")) result.beersFilled = (result.beersFilled || 0) + 1;
+        }
       }));
-      step("Bieren koppelen", Math.min(i + 5, toLink.length), toLink.length);
+      step("Bieren koppelen en aanvullen", Math.min(i + 5, patches.length), patches.length);
     }
 
     // 4. Check-ins aanmaken
@@ -3740,6 +3788,8 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
       <ul class="import-sum">
         <li><b>${result.checkins}</b> check-ins geïmporteerd</li>
         <li><b>${result.beersNew}</b> nieuwe bieren toegevoegd, <b>${result.beersLinked}</b> bestaande bieren gekoppeld aan Untappd</li>
+        ${result.beersFilled ? `<li><b>${result.beersFilled}</b> ${result.beersFilled === 1 ? "bestaand bier" : "bestaande bieren"} aangevuld met gegevens van Untappd</li>` : ""}
+        ${result.beersOverwritten ? `<li><b>${result.beersOverwritten}</b> ${result.beersOverwritten === 1 ? "bestaand bier" : "bestaande bieren"} bijgewerkt met de gegevens van Untappd</li>` : ""}
         ${withPhotos ? `<li><b>${result.photosCopied}</b> foto’s gekopieerd${result.photosLinked ? `, <b>${result.photosLinked}</b> gelinkt naar Untappd` : ""}</li>` : ""}
         ${result.failed ? `<li class="error">${result.failed} check-ins konden niet worden verwerkt</li>` : ""}
       </ul>
