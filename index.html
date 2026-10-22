@@ -252,6 +252,11 @@ textarea.input { min-height: 92px; resize: vertical; }
 .friend-stat { display: flex; align-items: center; gap: 10px; }
 .friend-stat .avatar { width: 32px; height: 32px; font-size: .85rem; }
 .db-list { display: grid; gap: 8px; }
+.bc-row {
+  display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; align-items: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 8px;
+}
+.bc-row .beer-photo { width: 52px; }
 .import-sum { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); margin-top: 8px; }
 table.preview { border-collapse: collapse; width: 100%; font-size: .88rem; }
@@ -513,7 +518,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.2";
+const APP_VERSION = "2026-10-22.6";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -1169,7 +1174,8 @@ function editBeer(b) {
 // Inchecken
 // ---------------------------------------------------------------------
 // Barcode controleren met het controlecijfer (EAN-8, UPC-A, EAN-13, GTIN-14)
-function cleanBarcode(v) { return String(v || "").replace(/[\s-]/g, ""); }
+// Alles wat geen cijfer is weghalen, zoals de apostrof die Excel nodig heeft
+function cleanBarcode(v) { return String(v || "").trim().replace(/[.,]0+$/, "").replace(/\D/g, ""); }
 function validBarcode(code) {
   if (!/^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(code)) return false;
   const digits = [...code].map(Number);
@@ -2202,10 +2208,16 @@ async function exportDatabase() {
       naam: b.name, brouwerij: b.brewery, stijl: b.style, alcohol: b.abv,
       land: b.country, barcode: b.barcode, omschrijving: b.description, foto: photoUrl(b.image_path),
     }));
-    downloadCsv(rows, CSV_COLS, `bierdatabase-${new Date().toISOString().slice(0, 10)}.csv`);
+    const name = `bierdatabase-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-")}.csv`;
+    downloadCsv(rows, CSV_COLS, name);
     toast(`${rows.length} bieren geëxporteerd`);
-  } catch (err) { toast("Exporteren lukte niet: " + err.message); }
+    return { ok: true, name, count: rows.length };
+  } catch (err) {
+    toast("Exporteren lukte niet: " + err.message);
+    return { ok: false, error: err.message };
+  }
 }
+
 
 function downloadTemplate() {
   downloadCsv([
@@ -2250,7 +2262,7 @@ function rowToBeer(r, map) {
   const num = v => { const n = parseFloat(String(v).replace(",", ".").replace(/[^\d.]/g, "")); return isNaN(n) ? null : n; };
   const name = get("name");
   if (!name) return { skip: "geen naam" };
-  let barcode = cleanBarcode(get("barcode")).replace(/\.0+$/, "");
+  let barcode = cleanBarcode(get("barcode"));
   let badCode = false;
   if (barcode && !validBarcode(barcode)) {
     // Excel laat voorloopnullen weg: probeer ze terug te zetten
@@ -2438,11 +2450,12 @@ async function renderDatabase() {
         <a class="btn" href="#database/nieuw">Bier toevoegen</a>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn soft small" href="#barcodes">Barcodes koppelen</a>
         <button class="btn ghost small" type="button" id="dbExport">Exporteren (CSV)</button>
         ${state.me?.is_admin ? `<button class="btn ghost small" type="button" id="dbImport">Importeren (CSV)</button>` : ""}
       </div>
       <div class="filters">
-        <input class="input search" type="search" id="dbSearch" placeholder="Zoek op bier of brouwerij" aria-label="Zoeken">
+        <input class="input search" type="search" id="dbSearch" placeholder="Zoek op naam, brouwerij, stijl of omschrijving" aria-label="Zoeken">
         <select class="input" id="dbFilter" aria-label="Filter">
           <option value="">Alle bieren</option>
           <option value="nocode">Zonder barcode</option>
@@ -2479,7 +2492,7 @@ async function renderDatabase() {
     const q = $("#dbSearch").value.trim().replace(/[,()%*\\]/g, " ").trim();
     const filter = $("#dbFilter").value;
     let query = sb.from("beers").select("*").order("name");
-    if (q) query = query.or(`name.ilike.%${q}%,brewery.ilike.%${q}%`);
+    if (q) query = query.or(`name.ilike.%${q}%,brewery.ilike.%${q}%,style.ilike.%${q}%,description.ilike.%${q}%`);
     if (filter === "nocode") query = query.is("barcode", null);
     if (filter === "nophoto") query = query.is("image_path", null);
     if (filter === "incomplete") query = query.or("style.is.null,abv.is.null,country.is.null");
@@ -2504,6 +2517,7 @@ async function renderDatabase() {
   };
   load(false);
 }
+
 
 function showDbBeer(b) {
   const fact = (label, v) => v != null && v !== "" ? `<div><dt>${label}</dt><dd>${esc(v)}</dd></div>` : "";
@@ -2542,13 +2556,17 @@ async function renderBeerForm(id) {
   }
   const isNew = !id;
   let source = "manual", lookedUpImage = null, photoFile = null;
+  if (isNew && state.formPrefill) { beer = { ...state.formPrefill }; source = state.formPrefill.source || "manual"; lookedUpImage = state.formPrefill.image_path || null; state.formPrefill = null; }
+  let linked = 0;
+  if (!isNew) ({ count: linked } = await sb.from("checkins").select("id", { count: "exact", head: true }).eq("beer_id", id));
 
   view().innerHTML = `
     <form class="stack" id="beerForm" novalidate>
       <div>
         <p><a href="#database" class="small">Terug naar de bierdatabase</a></p>
         <h1>${isNew ? "Bier toevoegen" : "Bier bewerken"}</h1>
-        ${isNew ? `<p class="muted">Het bier komt in de database zonder dat je het incheckt.</p>` : ""}
+        ${isNew ? `<p class="muted">Het bier komt in de database zonder dat je het incheckt.</p>`
+          : `<p class="muted">${linked ? `Wijzigingen gelden direct voor alle ${linked} ${linked === 1 ? "check-in" : "check-ins"} van dit bier, bij iedereen.` : "Er is nog niet op dit bier ingecheckt."}</p>`}
       </div>
 
       <div class="panel stack">
@@ -2576,6 +2594,14 @@ async function renderBeerForm(id) {
           </label>
         </div>
       </div>
+
+      ${!isNew && state.me?.is_admin ? `
+      <div class="panel stack">
+        <h2>Samenvoegen</h2>
+        <p class="muted small">Staat dit bier dubbel in de database? Zoek het andere bier. De check-ins daarvan gaan naar dit bier, lege velden hier worden aangevuld, en het andere bier verdwijnt.</p>
+        <input class="input" type="search" id="mergeSearch" placeholder="Zoek het dubbele bier" autocomplete="off">
+        <div class="results" id="mergeResults"></div>
+      </div>` : ""}
 
       <p class="error" id="beerFormErr" hidden></p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -2634,6 +2660,39 @@ async function renderBeerForm(id) {
     if (photoFile) { const img = $("#beerPhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
   };
 
+  const ms = $("#mergeSearch");
+  if (ms) {
+    let mt, mseq = 0, mfound = [];
+    ms.onkeydown = e => { if (e.key === "Enter") e.preventDefault(); };
+    ms.oninput = () => {
+      clearTimeout(mt);
+      const q = ms.value.trim().replace(/[,()%*\\]/g, " ").trim();
+      if (q.length < 2) { $("#mergeResults").innerHTML = ""; return; }
+      mt = setTimeout(async () => {
+        const my = ++mseq;
+        const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).neq("id", beer.id).order("name").limit(10);
+        if (my !== mseq) return;
+        mfound = data || [];
+        $("#mergeResults").innerHTML = mfound.length ? mfound.map(b => `
+          <button type="button" class="result" data-merge="${b.id}">
+            <span><b>${esc(b.name)}</b><br><span class="muted small">${esc([b.brewery, b.style, b.barcode].filter(Boolean).join(", "))}</span></span>
+            <span class="muted small">Samenvoegen</span>
+          </button>`).join("") : `<p class="muted small">Niets gevonden.</p>`;
+      }, 300);
+    };
+    $("#mergeResults").onclick = async e => {
+      const r = e.target.closest("[data-merge]");
+      if (!r) return;
+      const other = mfound.find(b => b.id === r.dataset.merge);
+      if (!confirm(`“${other.name}${other.brewery ? ` (${other.brewery})` : ""}” samenvoegen met “${beer.name}”?\n\nDe check-ins gaan naar “${beer.name}” en “${other.name}” wordt verwijderd.`)) return;
+      r.disabled = true;
+      const { data, error } = await sb.rpc("admin_merge_beers", { keep: beer.id, remove: other.id });
+      if (error) { r.disabled = false; return toast("Samenvoegen lukte niet: " + error.message); }
+      toast(`Samengevoegd. ${data.checkins} ${data.checkins === 1 ? "check-in" : "check-ins"} overgezet.`);
+      renderBeerForm(beer.id);
+    };
+  }
+
   const del = $("#beerDelete");
   if (del) del.onclick = async () => {
     if (!confirm(`${beer.name} verwijderen uit de database?`)) return;
@@ -2666,6 +2725,261 @@ async function renderBeerForm(id) {
     } catch (ex) {
       fail("Opslaan lukte niet: " + (ex.message || ex));
     }
+  };
+}
+
+// ---------------------------------------------------------------------
+// Barcodes koppelen: snel barcodes toevoegen aan bestaande bieren
+// ---------------------------------------------------------------------
+function normTxt(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/(\d)[.,](\d)/g, "$1$2").replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(bierbrouwerij|brouwerij|brasserie|brewery|brewing|brauerei|bier|beer|de|het|the|co|bv|nv)\b/g, " ")
+    .replace(/\s+/g, " ").trim();
+}
+function tokenSet(s) { return new Set(normTxt(s).split(" ").filter(Boolean)); }
+function matchScore(found, b) {
+  const A = tokenSet(`${found.name} ${found.brewery || ""}`), B = tokenSet(`${b.name} ${b.brewery || ""}`);
+  if (!A.size || !B.size) return 0;
+  let inter = 0; for (const t of A) if (B.has(t)) inter++;
+  let score = inter / (A.size + B.size - inter);
+  const nameB = tokenSet(b.name); let nameHits = 0; for (const t of nameB) if (A.has(t)) nameHits++;
+  score += 0.3 * (nameHits / nameB.size);
+  if (found.abv != null && b.abv != null && Math.abs(Number(found.abv) - Number(b.abv)) < 0.15) score += 0.15;
+  return score;
+}
+
+const bcState = { beers: [], total: 0, session: 0, mode: "scan", target: null, auto: true, lastCode: null };
+
+async function fetchBeersWithoutCode() {
+  let all = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from("beers").select("id, name, brewery, style, abv, description, image_path")
+      .is("barcode", null).order("name").range(from, from + 999);
+    if (error) throw error;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+  }
+  return all.map(b => ({ ...b, _words: normTxt(`${b.name} ${b.brewery || ""} ${b.style || ""} ${b.description || ""}`).split(" ") }));
+}
+
+function localSearch(q, limit = 30) {
+  const toks = normTxt(q).split(" ").filter(Boolean);
+  if (!toks.length) return bcState.beers.slice(0, limit);
+  const out = [];
+  // Elk zoekwoord moet het begin van een woord zijn: "ij" vindt 't IJ en IJwit, niet alcoholvrij
+  for (const b of bcState.beers) { if (toks.every(t => b._words.some(w => w.startsWith(t)))) { out.push(b); if (out.length >= limit) break; } }
+  return out;
+}
+
+async function renderBarcodes() {
+  setTab("database");
+  view().innerHTML = `<div class="loading">Bieren zonder barcode ophalen…</div>`;
+  try {
+    const [list, { count }] = await Promise.all([
+      fetchBeersWithoutCode(),
+      sb.from("beers").select("id", { count: "exact", head: true }),
+    ]);
+    bcState.beers = list; bcState.total = count || 0;
+  } catch (err) {
+    view().innerHTML = `<p class="error">Laden lukte niet: ${esc(err.message)}</p>`;
+    return;
+  }
+
+  view().innerHTML = `
+    <div class="stack">
+      <div>
+        <p><a href="#database" class="small">Terug naar de bierdatabase</a></p>
+        <h1>Barcodes koppelen</h1>
+      </div>
+      <div class="panel stack" id="bcProgress"></div>
+      <div class="auth-tabs" role="tablist" style="max-width:420px">
+        <button role="tab" type="button" data-bcmode="scan">Scan eerst</button>
+        <button role="tab" type="button" data-bcmode="list">Kies eerst</button>
+      </div>
+      <div id="bcBody"></div>
+    </div>`;
+  drawBcProgress();
+  view().querySelectorAll("[data-bcmode]").forEach(b => b.onclick = () => { stopScanner(); bcState.mode = b.dataset.bcmode; bcState.target = null; drawBcBody(); });
+  drawBcBody();
+}
+
+function drawBcProgress() {
+  const box = $("#bcProgress");
+  if (!box) return;
+  const withCode = bcState.total - bcState.beers.length;
+  const pct = bcState.total ? withCode / bcState.total : 0;
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">
+      <b>${withCode} van ${bcState.total} bieren hebben een barcode</b>
+      <span class="muted small">${(pct * 100).toLocaleString("nl-NL", { maximumFractionDigits: 1 })}%</span>
+    </div>
+    <span class="bar"><span style="width:${(pct * 100).toFixed(1)}%"></span></span>
+    ${bcState.session ? `<p class="small"><b>${bcState.session}</b> gekoppeld in deze sessie. Proost!</p>` : ""}`;
+}
+
+function bcRow(b, action) {
+  return `
+    <div class="bc-row">
+      ${photoBlock(b.image_path, b.style)}
+      <span class="db-body"><b>${esc(b.name)}</b><span class="beer-meta">${b.brewery ? `<span>${esc(b.brewery)}</span>` : ""}${b.style ? `<span>${esc(b.style)}</span>` : ""}${b.abv != null ? `<span>${nf(b.abv)}%</span>` : ""}</span></span>
+      ${action}
+    </div>`;
+}
+
+async function linkCode(beerId, code) {
+  const { error } = await sb.rpc("link_barcode", { beer: beerId, code });
+  if (error) { toast(error.message); return false; }
+  const b = bcState.beers.find(x => x.id === beerId);
+  bcState.beers = bcState.beers.filter(x => x.id !== beerId);
+  bcState.session++;
+  drawBcProgress();
+  if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+  toast(`${b ? b.name : "Bier"} gekoppeld aan ${code}`);
+  return true;
+}
+
+function drawBcBody() {
+  view().querySelectorAll("[data-bcmode]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.bcmode === bcState.mode)));
+  const body = $("#bcBody");
+
+  if (bcState.mode === "scan") {
+    body.innerHTML = `
+      <div class="stack">
+        <div class="panel stack">
+          <p class="muted small">Scan een flesje of blikje. De app zoekt de barcode op en stelt de bieren voor die er het meest op lijken.</p>
+          ${barcodeToolsHtml()}
+          <div class="type-code">
+            <input class="input" id="bcTyped" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode intypen">
+            <button class="btn ghost" type="button" id="bcTypedBtn">Opzoeken</button>
+          </div>
+          <label class="switch"><span>Na koppelen direct verder scannen</span><input type="checkbox" id="bcAuto" ${bcState.auto ? "checked" : ""}></label>
+        </div>
+        <div id="bcResult"></div>
+      </div>`;
+    const onCode = code => handleBcScan(code);
+    $("#scanBtn").onclick = () => startScan(onCode);
+    bindBarcodePhoto(onCode);
+    $("#bcAuto").onchange = e => { bcState.auto = e.target.checked; };
+    const typed = () => {
+      const code = cleanBarcode($("#bcTyped").value);
+      if (!validBarcode(code)) return toast("Deze barcode klopt niet. Controleer de cijfers.");
+      stopScanner(); handleBcScan(code);
+    };
+    $("#bcTypedBtn").onclick = typed;
+    $("#bcTyped").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); typed(); } };
+    return;
+  }
+
+  // Kies eerst: lijst van bieren zonder barcode
+  body.innerHTML = `
+    <div class="stack">
+      <div class="panel stack" id="bcTargetBox" hidden></div>
+      <input class="input" type="search" id="bcSearch" placeholder="Zoek op naam, brouwerij, stijl of omschrijving" autocomplete="off">
+      <p class="muted small" id="bcCount"></p>
+      <div class="db-list" id="bcList"></div>
+    </div>`;
+  const draw = () => {
+    const q = $("#bcSearch").value;
+    const list = localSearch(q, 50);
+    $("#bcCount").textContent = q.trim() ? `${list.length >= 50 ? "50+" : list.length} gevonden zonder barcode` : `${bcState.beers.length} bieren zonder barcode. Zoek om te filteren, bijvoorbeeld op een brouwerij.`;
+    $("#bcList").innerHTML = list.map(b => bcRow(b, `<button class="btn small" type="button" data-bcpick="${b.id}">Scannen</button>`)).join("");
+  };
+  let t;
+  $("#bcSearch").oninput = () => { clearTimeout(t); t = setTimeout(draw, 150); };
+  $("#bcList").onclick = e => {
+    const r = e.target.closest("[data-bcpick]");
+    if (!r) return;
+    bcState.target = bcState.beers.find(b => b.id === r.dataset.bcpick);
+    drawTarget();
+  };
+  const drawTarget = () => {
+    const box = $("#bcTargetBox");
+    const b = bcState.target;
+    if (!b) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML = `
+      <p class="small muted">Barcode toevoegen aan</p>
+      ${bcRow(b, `<button class="btn ghost small" type="button" id="bcCancel">Annuleren</button>`)}
+      ${barcodeToolsHtml()}
+      <div class="type-code">
+        <input class="input" id="bcTyped" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode intypen">
+        <button class="btn ghost" type="button" id="bcTypedBtn">Opslaan</button>
+      </div>`;
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+    const onCode = async code => {
+      const { data: owner } = await sb.from("beers").select("id, name").eq("barcode", code).maybeSingle();
+      if (owner) { const m = $("#scanMsg"); m.hidden = false; m.textContent = `Barcode ${code} hoort al bij “${owner.name}”.`; return; }
+      if (await linkCode(b.id, code)) { bcState.target = null; drawTarget(); draw(); }
+    };
+    $("#scanBtn").onclick = () => startScan(onCode);
+    bindBarcodePhoto(onCode);
+    $("#bcCancel").onclick = () => { stopScanner(); bcState.target = null; drawTarget(); };
+    const typed = () => {
+      const code = cleanBarcode($("#bcTyped").value);
+      if (!validBarcode(code)) return toast("Deze barcode klopt niet. Controleer de cijfers.");
+      stopScanner(); onCode(code);
+    };
+    $("#bcTypedBtn").onclick = typed;
+    $("#bcTyped").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); typed(); } };
+    startScan(onCode);
+  };
+  draw();
+}
+
+async function handleBcScan(code) {
+  const box = $("#bcResult");
+  const msg = $("#scanMsg");
+  if (msg) msg.hidden = true;
+  bcState.lastCode = code;
+  box.innerHTML = `<div class="panel"><p class="muted">Barcode ${esc(code)} opzoeken in alle bronnen…</p></div>`;
+  const res = await lookupBarcode(code);
+  if (bcState.lastCode !== code) return;
+
+  if (res.beer) {
+    box.innerHTML = `<div class="panel stack"><p>Barcode <b>${esc(code)}</b> hoort al bij <b>${esc(res.beer.name)}</b>${res.beer.brewery ? ` (${esc(res.beer.brewery)})` : ""}.</p><button class="btn" type="button" id="bcNext">Volgende scannen</button></div>`;
+    $("#bcNext").onclick = () => { box.innerHTML = ""; startScan(c => handleBcScan(c)); };
+    return;
+  }
+  const f = res.prefill || { barcode: code };
+  const suggestions = f.name
+    ? bcState.beers.map(b => ({ b, s: matchScore(f, b) })).filter(x => x.s > 0.2).sort((a, b) => b.s - a.s).slice(0, 6).map(x => x.b)
+    : [];
+
+  box.innerHTML = `
+    <div class="panel stack">
+      <p>Barcode <b>${esc(code)}</b>${f.name ? `: gevonden via ${esc(f.source)} als <b>${esc(f.name)}</b>${f.brewery ? ` (${esc(f.brewery)})` : ""}` : " is in geen enkele bron bekend"}.</p>
+      ${suggestions.length ? `<h3>Is het een van deze?</h3><div class="db-list">${suggestions.map(b => bcRow(b, `<button class="btn small" type="button" data-bclink="${b.id}">Koppelen</button>`)).join("")}</div>` : ""}
+      <label class="field"><span>${suggestions.length ? "Of zoek het juiste bier" : "Zoek het bier in de database"}</span>
+        <input class="input" type="search" id="bcFind" placeholder="Typ een paar letters" autocomplete="off" value="${esc(suggestions.length ? "" : (f.name || ""))}"></label>
+      <div class="db-list" id="bcFindList"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn ghost" type="button" id="bcNew">Staat er niet in: nieuw bier toevoegen</button>
+        <button class="btn ghost" type="button" id="bcSkip">Overslaan</button>
+      </div>
+    </div>`;
+
+  const find = () => {
+    const q = $("#bcFind").value;
+    $("#bcFindList").innerHTML = q.trim().length >= 2
+      ? (localSearch(q, 12).map(b => bcRow(b, `<button class="btn small" type="button" data-bclink="${b.id}">Koppelen</button>`)).join("") || `<p class="muted small">Niets gevonden zonder barcode.</p>`)
+      : "";
+  };
+  $("#bcFind").oninput = find;
+  find();
+  box.onclick = async e => {
+    const l = e.target.closest("[data-bclink]");
+    if (!l) return;
+    l.disabled = true;
+    if (await linkCode(l.dataset.bclink, code)) {
+      box.innerHTML = "";
+      if (bcState.auto) startScan(c => handleBcScan(c));
+    } else l.disabled = false;
+  };
+  $("#bcSkip").onclick = () => { box.innerHTML = ""; if (bcState.auto) startScan(c => handleBcScan(c)); };
+  $("#bcNew").onclick = () => {
+    state.formPrefill = { barcode: code, name: f.name || $("#bcFind").value.trim(), brewery: f.brewery || "", abv: f.abv ?? null, country: f.country || "", image_path: f.image_path || null, source: f.source || "manual" };
+    location.hash = "database/nieuw";
   };
 }
 
@@ -3366,6 +3680,7 @@ async function route() {
   if (h === "activiteit") return renderFeed();
   if (h === "badges") return renderBadges();
   if (h === "database") return renderDatabase();
+  if (h === "barcodes") return renderBarcodes();
   if (h === "database/nieuw") return renderBeerForm(null);
   if (h.startsWith("database/bewerk/")) return renderBeerForm(h.slice(16));
   if (h.startsWith("badges/")) return renderBadges(h.slice(7));
