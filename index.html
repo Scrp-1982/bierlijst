@@ -492,6 +492,30 @@ section.stack > h2 + * { margin-top: 10px; }
 .switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; cursor: pointer; }
 .switch input { width: 48px; height: 28px; accent-color: var(--hop); flex: none; }
 
+.zoomable { appearance: none; border: 0; padding: 0; background: none; cursor: zoom-in; display: block; color: inherit; }
+button.hero-photo { width: 100%; }
+button.post-photo { width: 100%; }
+dialog.lightbox {
+  width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0;
+  padding: 0; border-radius: 0; background: rgba(8, 10, 7, 0.94); color: #fff;
+  display: none; place-items: center; overflow: hidden;
+}
+dialog.lightbox[open] { display: grid; }
+dialog.lightbox::backdrop { background: transparent; }
+dialog.lightbox img {
+  max-width: calc(100vw - 24px); max-height: calc(100dvh - 120px); object-fit: contain;
+  border-radius: 10px; box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+}
+.lb-close {
+  position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px;
+  width: 48px; height: 48px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .92); color: #111; display: grid; place-items: center;
+}
+.lb-close svg { width: 24px; height: 24px; }
+@media (prefers-reduced-motion: no-preference) {
+  dialog.lightbox[open] { animation: lbfade .18s ease-out; }
+  @keyframes lbfade { from { opacity: 0; } }
+}
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 50;
   transform: translateX(-50%); max-width: calc(100vw - 32px);
@@ -557,6 +581,13 @@ section.stack > h2 + * { margin-top: 10px; }
   <div class="dlg-body" id="dlgBody"></div>
 </dialog>
 
+<dialog id="lightbox" class="lightbox" aria-label="Foto">
+  <button type="button" class="lb-close" id="lbClose" aria-label="Foto sluiten">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <img id="lbImg" alt="">
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
@@ -566,7 +597,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.18";
+const APP_VERSION = "2026-10-22.19";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -664,6 +695,8 @@ function glassSvg(hex) {
 function photoBlock(path, style, cls = "beer-photo") {
   const c = beerColor(style);
   const url = photoUrl(path);
+  // De grote foto in een detailkaart kun je aantikken om hem te vergroten
+  if (url && cls === "hero-photo") return `<button type="button" class="${cls} zoomable" style="--srm:${c.hex}" data-zoom="${esc(url)}" aria-label="Foto groot bekijken"><img src="${esc(url)}" alt="" loading="lazy"></button>`;
   return `<div class="${cls}" style="--srm:${c.hex}">${url ? `<img src="${esc(url)}" alt="" loading="lazy">` : glassSvg(c.hex)}</div>`;
 }
 // Tekens tellen zoals mensen ze zien: één emoji is één teken
@@ -757,6 +790,24 @@ function openDialog(html) {
 }
 function closeDialog() { $("#dlg").close(); }
 $("#dlgClose").addEventListener("click", closeDialog);
+
+// Fotoviewer: foto groot bekijken in het huidige venster
+function openLightbox(url) {
+  const lb = $("#lightbox");
+  $("#lbImg").src = url;
+  if (!lb.open) lb.showModal();
+  $("#lbClose").focus();
+}
+function closeLightbox() { const lb = $("#lightbox"); if (lb.open) lb.close(); }
+$("#lbClose").addEventListener("click", e => { e.stopPropagation(); closeLightbox(); });
+$("#lightbox").addEventListener("click", e => { if (e.target.id !== "lbClose") closeLightbox(); });
+$("#lightbox").addEventListener("close", () => { $("#lbImg").removeAttribute("src"); });
+document.addEventListener("click", e => {
+  const z = e.target.closest("[data-zoom]");
+  if (!z) return;
+  e.preventDefault(); e.stopPropagation();
+  openLightbox(z.dataset.zoom);
+}, true);
 $("#dlg").addEventListener("click", e => { if (e.target.id === "dlg") closeDialog(); });
 
 // Afbeelding openen, ook op browsers die niet alle opties ondersteunen
@@ -1097,7 +1148,7 @@ async function showBeer(g, { own }) {
         ${c.notes ? `<p style="margin-top:6px">${esc(c.notes)}</p>` : ""}
         ${state.user && c.user_id === state.user.id ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn ghost small" data-edit="${c.id}">Wijzigen</button><button class="btn danger small" data-del="${c.id}">Verwijderen</button></div>` : ""}
       </div>
-      ${c.photo_path ? `<a href="${esc(photoUrl(c.photo_path))}" target="_blank" rel="noopener"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto bij check-in" loading="lazy"></a>` : ""}
+      ${c.photo_path ? `<button type="button" class="zoomable" data-zoom="${esc(photoUrl(c.photo_path))}" aria-label="Foto groot bekijken"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto bij check-in" loading="lazy"></button>` : ""}
     </div>`;
 
   openDialog(`
@@ -3849,7 +3900,7 @@ function postHtml(c) {
       </div>
       ${c.rating != null ? `<div class="post-rating">${stars(c.rating)}<b>${nf(c.rating, 2)}</b></div>` : ""}
       ${c.notes ? `<p class="post-notes">${esc(c.notes)}</p>` : ""}
-      ${c.photo_path ? `<div class="post-photo"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto van ${esc(b.name || "het bier")}" loading="lazy"></div>` : ""}
+      ${c.photo_path ? `<button type="button" class="post-photo zoomable" data-zoom="${esc(photoUrl(c.photo_path))}" aria-label="Foto groot bekijken"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto van ${esc(b.name || "het bier")}" loading="lazy"></button>` : ""}
       ${cheerHtml(c, mine)}
       <div class="comments">
         ${(c.comments || []).map(cm => `
@@ -4521,6 +4572,7 @@ const params = new URLSearchParams(location.search);
 const publicUser = params.get("u");
 
 async function route() {
+  closeLightbox();
   if ($("#dlg").open) closeDialog();
   view().onclick = null;
   view().onchange = null;
