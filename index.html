@@ -563,7 +563,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.16";
+const APP_VERSION = "2026-10-22.17";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -1142,7 +1142,7 @@ async function showBeer(g, { own }) {
     const ownerId = g.checkins[0]?.user_id;
     const { data } = await sb
       .from("checkins")
-      .select("*, profile:profiles(id, display_name)")
+      .select("*, profile:profiles!checkins_user_id_fkey(id, display_name)")
       .eq("beer_id", b.id)
       .neq("user_id", ownerId)
       .order("drunk_at", { ascending: false })
@@ -1775,7 +1775,7 @@ async function loadBeerStats(beer) {
     const ids = [state.user.id, ...(await friendIds())];
     const { data, error } = await sb
       .from("checkins")
-      .select("user_id, rating, drunk_at, profile:profiles(id, display_name, avatar_path)")
+      .select("user_id, rating, drunk_at, profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path)")
       .eq("beer_id", beer.id)
       .in("user_id", ids)
       .order("drunk_at", { ascending: false });
@@ -3806,7 +3806,7 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
-const feedState = { items: [], done: false, ids: [] };
+const feedState = { items: [], done: false, ids: [], scope: (() => { try { return localStorage.getItem("feedScope") || "all"; } catch { return "all"; } })() };
 
 function relTime(iso) {
   const rtf = new Intl.RelativeTimeFormat("nl", { numeric: "auto" });
@@ -3817,10 +3817,11 @@ function relTime(iso) {
 }
 
 async function fetchFeed(from) {
-  const { data, error } = await sb
+  let q = sb
     .from("checkins")
-    .select("*, beer:beers(*), profile:profiles(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles(id, display_name, avatar_path)), cheers(user_id, profile:profiles(id, display_name))")
-    .in("user_id", feedState.ids)
+    .select("*, beer:beers(*), profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles!comments_user_id_fkey(id, display_name, avatar_path)), cheers(user_id, profile:profiles!cheers_user_id_fkey(id, display_name))");
+  if (feedState.scope === "friends") q = q.in("user_id", feedState.ids);
+  const { data, error } = await q
     .order("created_at", { ascending: false })
     .order("created_at", { referencedTable: "comments", ascending: true })
     .range(from, from + FEED_PAGE - 1);
@@ -3904,12 +3905,21 @@ async function renderFeed() {
   view().innerHTML = `
     <div class="stack">
       <h1>Activiteit</h1>
-      <p class="muted">Jij en ${feedState.ids.length - 1} ${feedState.ids.length - 1 === 1 ? "vriend" : "vrienden"}</p>
+      <div class="auth-tabs" role="tablist" style="max-width:320px">
+        <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Iedereen</button>
+        <button role="tab" type="button" data-scope="friends" aria-selected="${feedState.scope === "friends"}">Vrienden</button>
+      </div>
+      <p class="muted">${feedState.scope === "all" ? "Alle check-ins van iedereen, de nieuwste bovenaan." : `Jij en ${feedState.ids.length - 1} ${feedState.ids.length - 1 === 1 ? "vriend" : "vrienden"}`}</p>
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
         <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
-      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden.</p><p style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="#inchecken">Bier inchecken</a><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
+      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">${feedState.scope === "all" ? "Nog niemand heeft iets ingecheckt." : "Hier zie je je eigen check-ins en die van je vrienden."}</p><p style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="#inchecken">Bier inchecken</a><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
     </div>`;
 
+  view().querySelectorAll("[data-scope]").forEach(b => b.onclick = () => {
+    feedState.scope = b.dataset.scope;
+    try { localStorage.setItem("feedScope", feedState.scope); } catch {}
+    renderFeed();
+  });
   const more = $("#moreBtn");
   if (more) more.onclick = async () => {
     more.disabled = true;
@@ -3937,7 +3947,7 @@ async function renderFeed() {
     const { data, error } = await sb
       .from("comments")
       .insert({ checkin_id: form.dataset.commentform, body })
-      .select("id, body, created_at, user_id, profile:profiles(id, display_name, avatar_path)")
+      .select("id, body, created_at, user_id, profile:profiles!comments_user_id_fkey(id, display_name, avatar_path)")
       .single();
     if (error) { btn.disabled = false; return toast("Plaatsen lukte niet: " + error.message); }
     const c = feedState.items.find(x => x.id === form.dataset.commentform);
