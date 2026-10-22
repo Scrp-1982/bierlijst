@@ -436,6 +436,22 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .levels li.done { color: var(--ink); font-weight: 600; }
 .levels .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; opacity: .35; }
 .levels li.done .dot { opacity: 1; }
+/* Inhoud van uitklapblokken erft de box-sizing niet goed in alle browsers */
+details, details * { box-sizing: border-box; }
+details.fold { padding: 0; }
+details.fold > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 20px; border-radius: var(--radius-lg);
+}
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary:hover { background: var(--paper); }
+details.fold > summary:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.fold-title { font: 700 1.15rem var(--display); }
+details.fold .chev { width: 22px; height: 22px; flex: none; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { details.fold .chev { transition: transform .18s; } }
+details.fold[open] .chev { transform: rotate(180deg); }
+details.fold[open] > summary { border-bottom: 1px solid var(--line); border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.fold-body { padding: 16px 20px 20px; }
 .surprise { display: flex; align-items: center; gap: 16px; }
 .surprise .coaster { flex: none; }
 .badge-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
@@ -621,7 +637,7 @@ dialog.lightbox img {
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.22";
+const APP_VERSION = "2026-10-22.23";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -4492,10 +4508,10 @@ async function renderAdmin() {
 // ---------------------------------------------------------------------
 // Wachtwoord wijzigen
 // ---------------------------------------------------------------------
-function passwordForm(forced) {
+function passwordForm(forced, inFold = false) {
   return `
-    <form class="panel stack" id="pwForm">
-      <h2>${forced ? "Kies een nieuw wachtwoord" : "Wachtwoord wijzigen"}</h2>
+    <form class="${inFold ? "" : "panel "}stack" id="pwForm">
+      ${inFold ? "" : `<h2>${forced ? "Kies een nieuw wachtwoord" : "Wachtwoord wijzigen"}</h2>`}
       ${forced ? `<p class="muted">Je bent ingelogd met een tijdelijk wachtwoord. Kies een eigen wachtwoord om verder te gaan.</p>` : ""}
       ${forced ? "" : `<label class="field"><span>Huidig wachtwoord</span><input class="input" type="password" name="current" autocomplete="current-password" required></label>`}
       <label class="field"><span>Nieuw wachtwoord</span><input class="input" type="password" name="pw1" minlength="8" autocomplete="new-password" required></label>
@@ -4538,76 +4554,82 @@ function renderForcedPassword() {
 // ---------------------------------------------------------------------
 // Profiel en export
 // ---------------------------------------------------------------------
+// Welke onderdelen van het profiel open staan (blijft zo na opslaan)
+const profileOpen = new Set();
+
 function renderProfile() {
   setTab("profiel");
   const p = state.me || {};
   const publicLink = p.username ? `${SITE_URL}?u=${encodeURIComponent(p.username)}` : "";
+  const fold = (key, title, hint, body) => `
+      <details class="panel fold" data-fold="${key}" ${profileOpen.has(key) ? "open" : ""}>
+        <summary>
+          <span><b class="fold-title">${title}</b>${hint ? `<br><span class="muted small">${hint}</span>` : ""}</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <div class="fold-body stack">${body}</div>
+      </details>`;
   view().innerHTML = `
     <div class="stack">
       <h1>Profiel</h1>
       <div class="panel avatar-edit">
-        ${avatarHtml(p, 88)}
+        ${avatarHtml(p, 72)}
         <div class="stack" style="--gap:8px">
-          <b>Profielfoto</b>
+          <div><b style="font-size:1.15rem">${esc(p.display_name || "")}</b><br><span class="muted small">${esc(state.user?.email || "")}</span></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <label class="btn soft small" style="cursor:pointer">
               <input type="file" accept="image/*" id="avatarInput" hidden>
-              ${p.avatar_path ? "Andere foto kiezen" : "Foto kiezen"}
+              ${p.avatar_path ? "Andere foto" : "Profielfoto kiezen"}
             </label>
-            ${p.avatar_path ? `<button class="btn ghost small" id="avatarRemove" type="button">Verwijderen</button>` : ""}
+            ${p.avatar_path ? `<button class="btn ghost small" id="avatarRemove" type="button">Foto verwijderen</button>` : ""}
           </div>
         </div>
       </div>
 
-      <form class="panel stack" id="profileForm">
-        <label class="field"><span>Naam</span><input class="input" name="display_name" value="${esc(p.display_name)}" required></label>
-        <label class="field"><span>Gebruikersnaam</span><input class="input" name="username" value="${esc(p.username)}" placeholder="bijv. mike_bier" pattern="[a-z0-9_]{3,30}" autocapitalize="off"></label>
-        <p class="muted small">Kleine letters, cijfers en _, 3 tot 30 tekens. Nodig voor je openbare link.</p>
-        <label class="field"><span>Over jou</span><textarea class="input" name="bio" maxlength="500" placeholder="Favoriete stijl, vaste kroeg…">${esc(p.bio)}</textarea></label>
-        <label class="switch">
-          <span><b>Openbare lijst</b><br><span class="muted small">Iedereen met de link kan je bieren zien, ook zonder account.</span></span>
-          <input type="checkbox" name="is_public" ${p.is_public ? "checked" : ""}>
-        </label>
-        <button class="btn" type="submit">Profiel opslaan</button>
-      </form>
+      ${fold("gegevens", "Profielgegevens", "Naam, gebruikersnaam, over jou en je openbare lijst", `
+        <form class="stack" id="profileForm">
+          <label class="field"><span>Naam</span><input class="input" name="display_name" value="${esc(p.display_name)}" required></label>
+          <label class="field"><span>Gebruikersnaam</span><input class="input" name="username" value="${esc(p.username)}" placeholder="bijv. mike_bier" pattern="[a-z0-9_]{3,30}" autocapitalize="off"></label>
+          <p class="muted small">Kleine letters, cijfers en _, 3 tot 30 tekens. Nodig voor je openbare link.</p>
+          <label class="field"><span>Over jou</span><textarea class="input" name="bio" maxlength="500" placeholder="Favoriete stijl, vaste kroeg…">${esc(p.bio)}</textarea></label>
+          <label class="switch">
+            <span><b>Openbare lijst</b><br><span class="muted small">Iedereen met de link kan je bieren zien, ook zonder account.</span></span>
+            <input type="checkbox" name="is_public" ${p.is_public ? "checked" : ""}>
+          </label>
+          <button class="btn" type="submit">Profiel opslaan</button>
+        </form>
+        ${p.is_public && publicLink ? `
+          <div class="stack" style="border-top:1px solid var(--line);padding-top:14px">
+            <b>Je openbare link</b>
+            <input class="input" readonly value="${esc(publicLink)}" id="pubLink">
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn" id="copyLink" type="button">Link kopiëren</button>
+              <a class="btn ghost" href="${esc(publicLink)}" target="_blank" rel="noopener">Bekijken</a>
+            </div>
+          </div>` : p.is_public ? `<p class="muted">Kies een gebruikersnaam om je openbare link te krijgen.</p>` : ""}`)}
 
-      ${p.is_public && publicLink ? `
-        <div class="panel stack">
-          <h2>Je openbare link</h2>
-          <input class="input" readonly value="${esc(publicLink)}" id="pubLink">
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn" id="copyLink" type="button">Link kopiëren</button>
-            <a class="btn ghost" href="${esc(publicLink)}" target="_blank" rel="noopener">Bekijken</a>
-          </div>
-        </div>` : p.is_public ? `<p class="muted">Kies een gebruikersnaam om je openbare link te krijgen.</p>` : ""}
+      ${fold("wachtwoord", "Wachtwoord wijzigen", "", passwordForm(false, true))}
 
-      ${passwordForm(false)}
+      ${p.is_admin ? fold("beheer", "Beheer", "Gebruikers, uitnodigingen en rechten", `
+        <a class="btn soft" href="#beheer">Naar beheer</a>
+        <a class="btn soft" href="#controleren">Wijzigingen controleren</a>`) : ""}
 
-      ${p.is_admin ? `
-        <div class="panel stack">
-          <h2>Beheer</h2>
-          <p class="muted small">Mensen uitnodigen en wachtwoorden resetten.</p>
-          <a class="btn soft" href="#beheer">Naar beheer</a>
-        </div>` : ""}
+      ${fold("untappd", "Untappd importeren", "Je check-ins uit een Untappd-export overzetten", `
+        <a class="btn soft" href="#untappd">Untappd-export importeren</a>`)}
 
-      <div class="panel stack">
-        <h2>Untappd importeren</h2>
-        <p class="muted small">Zet je check-ins uit een Untappd-export over naar je eigen lijst.</p>
-        <a class="btn soft" href="#untappd">Untappd-export importeren</a>
-      </div>
-
-      <div class="panel stack">
-        <h2>Exporteren</h2>
+      ${fold("export", "Exporteren", "Je check-ins downloaden als CSV of JSON", `
         <p class="muted small">Download al je check-ins met de biergegevens. CSV opent direct in Excel.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn soft" id="csvBtn" type="button">Download CSV</button>
           <button class="btn soft" id="jsonBtn" type="button">Download JSON</button>
-        </div>
-      </div>
+        </div>`)}
 
       <button class="btn ghost" id="logoutBtn" type="button">Uitloggen</button>
       <p class="muted small" style="text-align:center">Versie ${APP_VERSION}</p>
     </div>`;
+  view().querySelectorAll("details.fold").forEach(d => d.addEventListener("toggle", () => {
+    if (d.open) profileOpen.add(d.dataset.fold); else profileOpen.delete(d.dataset.fold);
+  }));
 
   $("#profileForm").onsubmit = async e => {
     e.preventDefault();
