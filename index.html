@@ -513,7 +513,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.1";
+const APP_VERSION = "2026-10-22.2";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -998,7 +998,6 @@ async function showBeer(g, { own }) {
       <dl class="facts">
         ${fact("Stijl", b.style)}
         ${fact("Alcohol", b.abv != null ? nf(b.abv) + "%" : null)}
-        ${fact("Bitterheid", b.ibu != null ? b.ibu + " IBU" : null)}
         ${fact("Land", b.country)}
         ${fact("Barcode", b.barcode)}
       </dl>
@@ -1139,9 +1138,8 @@ function beerFields(b = {}, opts = {}) {
       <label class="field"><span>Brouwerij</span><input class="input" name="brewery" value="${esc(b.brewery)}"></label>
       <label class="field"><span>Stijl</span><input class="input" name="style" list="styleList" value="${esc(b.style)}" placeholder="Bijv. Tripel"></label>
     </div>
-    <div class="grid3">
+    <div class="grid2">
       <label class="field"><span>Alcohol %</span><input class="input" name="abv" type="number" step="0.1" min="0" max="70" inputmode="decimal" value="${esc(b.abv)}"></label>
-      <label class="field"><span>IBU</span><input class="input" name="ibu" type="number" step="1" min="0" max="300" inputmode="numeric" value="${esc(b.ibu)}"></label>
       <label class="field"><span>Land</span><input class="input" name="country" list="countryList" value="${esc(b.country)}"></label>
     </div>
     <label class="field"><span>Omschrijving</span><textarea class="input" name="description">${esc(b.description)}</textarea></label>
@@ -1157,7 +1155,6 @@ function readBeerFields(f) {
     brewery: String(f.get("brewery") || "").trim() || null,
     style: String(f.get("style") || "").trim() || null,
     abv: num(f.get("abv")),
-    ibu: num(f.get("ibu")),
     country: String(f.get("country") || "").trim() || null,
     description: String(f.get("description") || "").trim() || null,
     ...(f.has("barcode") ? { barcode: cleanBarcode(f.get("barcode")) || null } : {}),
@@ -1863,7 +1860,6 @@ const BADGE_FAMILIES = {
   heavy:     { cat: "algemeen", name: "Zwaargewicht", emoji: "🏋️", t: [1, 5, 10], desc: many("Drink een bier van 12% of meer", "Drink # verschillende bieren van 12% of meer") },
   light:     { cat: "algemeen", name: "Lichtgewicht", emoji: "🪶", t: [5, 10, 25], desc: t => `Drink ${t} verschillende bieren van 4% of minder` },
   nonalc:    { cat: "algemeen", name: "Bob", emoji: "🚗", t: [1, 5, 10, 25, 50], desc: many("Drink een alcoholvrij bier", "Drink # verschillende alcoholvrije bieren") },
-  bitter:    { cat: "algemeen", name: "Bitterbal", emoji: "🟤", t: [3, 10, 25], desc: t => `Drink ${t} verschillende bieren met 60 IBU of meer` },
   tap:       { cat: "algemeen", name: "Van de tap", emoji: "🚰", t: [10, 25, 50, 100, 250], desc: t => `Drink ${t} keer een bier van de tap` },
   bottle:    { cat: "algemeen", name: "Flessenpost", emoji: "🍾", t: [10, 25, 50, 100, 250], desc: t => `Drink ${t} keer een bier uit de fles` },
   can:       { cat: "algemeen", name: "Blikkie", emoji: "🥫", t: [10, 25, 50, 100, 250], desc: t => `Drink ${t} keer een bier uit blik` },
@@ -1980,7 +1976,6 @@ function computeBadges(checkins, extra = {}) {
     if (abv != null && abv >= 12) bump("heavy", B.heavy, iso);
     if (abv != null && abv > 0.5 && abv <= 4) bump("light", B.light, iso);
     if (NONALC.test(style) || (abv != null && abv <= 0.5)) bump("nonalc", B.nonalc, iso);
-    if (b.ibu != null && Number(b.ibu) >= 60) bump("bitter", B.bitter, iso);
     if (m >= 9 && m <= 11 && /\bbock|\bbok\b|bokbier/.test(style)) bump("bockseason", B.bockseason, iso);
     if (m >= 9 && m <= 10 && ct?.code === "DE") bump("oktober", B.oktober, iso);
     if (m >= 6 && m <= 8 && /wit|weizen|weiss|wheat|blanche|pils|lager|helles/.test(style)) bump("summer", B.summer, iso);
@@ -2197,14 +2192,14 @@ function downloadCsv(rows, cols, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-const CSV_COLS = ["naam", "brouwerij", "stijl", "alcohol", "ibu", "land", "barcode", "omschrijving", "foto"];
+const CSV_COLS = ["naam", "brouwerij", "stijl", "alcohol", "land", "barcode", "omschrijving", "foto"];
 
 async function exportDatabase() {
   toast("Database ophalen…");
   try {
     const beers = await fetchAllBeers();
     const rows = beers.map(b => ({
-      naam: b.name, brouwerij: b.brewery, stijl: b.style, alcohol: b.abv, ibu: b.ibu,
+      naam: b.name, brouwerij: b.brewery, stijl: b.style, alcohol: b.abv,
       land: b.country, barcode: b.barcode, omschrijving: b.description, foto: photoUrl(b.image_path),
     }));
     downloadCsv(rows, CSV_COLS, `bierdatabase-${new Date().toISOString().slice(0, 10)}.csv`);
@@ -2214,7 +2209,7 @@ async function exportDatabase() {
 
 function downloadTemplate() {
   downloadCsv([
-    { naam: "Zatte", brouwerij: "Brouwerij ’t IJ", stijl: "Tripel", alcohol: 8, ibu: 30, land: "Nederland", barcode: "", omschrijving: "Het eerste bier van ’t IJ", foto: "" },
+    { naam: "Zatte", brouwerij: "Brouwerij ’t IJ", stijl: "Tripel", alcohol: 8, land: "Nederland", barcode: "", omschrijving: "Het eerste bier van ’t IJ", foto: "" },
   ], CSV_COLS, "bierdatabase-voorbeeld.csv");
 }
 
@@ -2224,13 +2219,12 @@ const CSV_SYNONYMS = {
   brewery: ["brouwerij", "brouwer", "brewery", "brewer", "brewery_name", "breweryname", "brand", "brands", "merk"],
   style: ["stijl", "biertype", "soort", "type", "style", "beer_type", "beertype", "beer_style"],
   abv: ["alcohol", "alc", "abv", "alcoholpercentage", "alcohol_percentage", "beer_abv", "vol", "alcvol"],
-  ibu: ["ibu", "bitterheid", "beer_ibu"],
   country: ["land", "herkomst", "country", "brewery_country", "origin", "countries"],
   barcode: ["barcode", "ean", "ean13", "gtin", "upc", "code"],
   description: ["omschrijving", "beschrijving", "description", "notes", "beer_description"],
   image: ["foto", "afbeelding", "image", "photo", "photo_url", "image_url", "beer_label", "label"],
 };
-const FIELD_LABELS = { name: "Naam", brewery: "Brouwerij", style: "Stijl", abv: "Alcohol", ibu: "IBU", country: "Land", barcode: "Barcode", description: "Omschrijving", image: "Foto" };
+const FIELD_LABELS = { name: "Naam", brewery: "Brouwerij", style: "Stijl", abv: "Alcohol", country: "Land", barcode: "Barcode", description: "Omschrijving", image: "Foto" };
 
 function mapColumns(headers) {
   const norm = h => String(h).toLowerCase().replace(/^\ufeff/, "").trim().replace(/[\s.%()-]+/g, "_").replace(/^_+|_+$/g, "");
@@ -2264,7 +2258,6 @@ function rowToBeer(r, map) {
     if (fixed) barcode = fixed; else { barcode = ""; badCode = true; }
   }
   const abv = num(get("abv"));
-  const ibu = num(get("ibu"));
   const ct = normCountry(get("country"));
   const img = get("image");
   return {
@@ -2273,7 +2266,6 @@ function rowToBeer(r, map) {
       brewery: get("brewery") || null,
       style: get("style") || null,
       abv: abv != null && abv >= 0 && abv <= 70 ? abv : null,
-      ibu: ibu != null && ibu >= 0 && ibu <= 300 ? Math.round(ibu) : null,
       country: ct ? ct.name : null,
       barcode: barcode || null,
       description: get("description") || null,
@@ -2287,7 +2279,7 @@ function openImportDialog() {
   openDialog(`
     <div class="stack">
       <h2>CSV importeren</h2>
-      <p>Kies een CSV-bestand met bieren. De app herkent kolommen als naam, brouwerij, stijl, alcohol, IBU, land, barcode en omschrijving, ook in het Engels of uit een Untappd-export.</p>
+      <p>Kies een CSV-bestand met bieren. De app herkent kolommen als naam, brouwerij, stijl, alcohol, land, barcode en omschrijving, ook in het Engels of uit een Untappd-export.</p>
       <p class="muted small">Je ziet eerst een voorbeeld; er wordt pas iets opgeslagen als je op Importeren klikt.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <label class="btn" style="cursor:pointer"><input type="file" accept=".csv,text/csv" id="csvFile" hidden>CSV-bestand kiezen</label>
@@ -2331,7 +2323,7 @@ function openImportDialog() {
           continue;
         }
         const patch = {};
-        for (const f of ["brewery", "style", "abv", "ibu", "country", "barcode", "description", "image_path"]) {
+        for (const f of ["brewery", "style", "abv", "country", "barcode", "description", "image_path"]) {
           if ((match[f] == null || match[f] === "") && nb[f] != null && nb[f] !== "") {
             if (f === "barcode" && byCode.has(nb[f])) continue;
             patch[f] = nb[f];
@@ -2525,7 +2517,6 @@ function showDbBeer(b) {
       <dl class="facts">
         ${fact("Stijl", b.style)}
         ${fact("Alcohol", b.abv != null ? nf(b.abv) + "%" : null)}
-        ${fact("Bitterheid", b.ibu != null ? b.ibu + " IBU" : null)}
         ${fact("Land", b.country)}
         ${fact("Barcode", b.barcode || "Nog geen")}
       </dl>
@@ -2600,7 +2591,7 @@ async function renderBeerForm(id) {
 
   const fill = pre => {
     let n = 0;
-    for (const k of ["name", "brewery", "style", "abv", "ibu", "country", "description"]) {
+    for (const k of ["name", "brewery", "style", "abv", "country", "description"]) {
       const el = form.elements[k];
       if (el && !String(el.value).trim() && pre[k] != null && pre[k] !== "") { el.value = pre[k]; n++; }
     }
@@ -3320,7 +3311,6 @@ async function exportData(kind) {
     brouwerij: c.beer?.brewery,
     stijl: c.beer?.style,
     alcohol: c.beer?.abv,
-    ibu: c.beer?.ibu,
     land: c.beer?.country,
     barcode: c.beer?.barcode,
     score: c.rating,
