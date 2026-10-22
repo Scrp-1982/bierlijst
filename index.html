@@ -449,9 +449,12 @@ dialog::backdrop { background: rgba(20, 24, 18, 0.55); }
 .post-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
 .cheer-btn {
   appearance: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-  min-height: 38px; padding: 0 16px; border-radius: 999px; font-weight: 700;
-  border: 1.5px solid var(--line); background: transparent; color: var(--ink);
+  min-height: 40px; min-width: 52px; padding: 0 12px; border-radius: 999px; justify-content: center;
+  border: 1.5px solid var(--line); background: transparent; color: var(--ink); font-weight: 700;
 }
+.cheer-btn .cheer-icon { font-size: 1.35rem; line-height: 1; filter: grayscale(1); opacity: .6; }
+.cheer-btn.on .cheer-icon, .cheer-btn.own .cheer-icon { filter: none; opacity: 1; }
+.cheer-btn.own { cursor: default; border-style: dashed; }
 .cheer-btn.on { background: var(--gold); border-color: var(--gold); color: #2A1E05; }
 .cheer-btn:disabled { cursor: progress; opacity: .6; }
 @media (prefers-reduced-motion: no-preference) {
@@ -563,7 +566,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.17";
+const APP_VERSION = "2026-10-22.18";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -3822,7 +3825,8 @@ async function fetchFeed(from) {
     .select("*, beer:beers(*), profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles!comments_user_id_fkey(id, display_name, avatar_path)), cheers(user_id, profile:profiles!cheers_user_id_fkey(id, display_name))");
   if (feedState.scope === "friends") q = q.in("user_id", feedState.ids);
   const { data, error } = await q
-    .order("created_at", { ascending: false })
+    .order("drunk_at", { ascending: false })
+    .order("id", { ascending: false })
     .order("created_at", { referencedTable: "comments", ascending: true })
     .range(from, from + FEED_PAGE - 1);
   if (error) throw error;
@@ -3877,10 +3881,13 @@ function cheerHtml(c, mine) {
   if (names.length === 1) who = names[0] === "Jij" ? "Jij proost mee" : `${names[0]} proost mee`;
   else if (names.length === 2) who = `${names[0]} en ${names[1]} proosten mee`;
   else if (names.length > 2) who = `${names[0]}, ${names[1]} en ${names.length - 2} ${names.length - 2 === 1 ? "ander" : "anderen"} proosten mee`;
-  if (mine && !list.length) return "";
+  if (mine && names.length) who = names.length === 1 ? `${names[0]} proost mee` : who;
+  const n = list.length;
   return `
     <div class="post-actions">
-      ${mine ? "" : `<button type="button" class="cheer-btn ${iCheered ? "on" : ""}" data-cheer="${c.id}" aria-pressed="${iCheered}">🍻 Proost</button>`}
+      ${mine
+        ? `<span class="cheer-btn own" title="${n ? `${n} ${n === 1 ? "proost" : "proosts"} ontvangen` : "Nog geen proosts"}" aria-label="${n} proosts ontvangen"><span class="cheer-icon" aria-hidden="true">🍻</span>${n ? `<b>${n}</b>` : ""}</span>`
+        : `<button type="button" class="cheer-btn ${iCheered ? "on" : ""}" data-cheer="${c.id}" aria-pressed="${iCheered}" aria-label="${iCheered ? "Proost intrekken" : "Proost"}" title="${iCheered ? "Proost intrekken" : "Proost!"}"><span class="cheer-icon" aria-hidden="true">🍻</span>${n ? `<b>${n}</b>` : ""}</button>`}
       ${who ? `<span class="post-meta">${esc(who)}</span>` : ""}
     </div>`;
 }
