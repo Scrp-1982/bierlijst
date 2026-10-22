@@ -1,0 +1,42 @@
+# Bierlijst: site publiceren op GitHub Pages
+# Start automatisch bij elke upload naar main, en handmatig via
+# Actions -> "Site publiceren" -> "Run workflow".
+name: Site publiceren
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Komt er een nieuwe upload terwijl er nog een publicatie loopt,
+# dan wordt de oude afgebroken en gaat de nieuwste door.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publiceren:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Bestanden ophalen
+        uses: actions/checkout@v4
+
+      - name: Pages instellen
+        uses: actions/configure-pages@v5
+
+      - name: Site inpakken
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Publiceren
+        id: deployment
+        uses: actions/deploy-pages@v4
