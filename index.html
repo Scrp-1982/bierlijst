@@ -318,10 +318,15 @@ details.panel[open] summary { margin-bottom: 8px; }
 .chip.on { background: var(--hop-soft); border-color: var(--hop); }
 .result { cursor: pointer; }
 .result:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
-#results .result { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px; }
-.res-main { grid-column: 1; min-width: 0; overflow-wrap: break-word; }
-#results .result > .muted.small:last-child { grid-column: 2; grid-row: 1; }
-.res-stats { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+#results .result { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 4px 10px; padding: 8px 12px; }
+.res-main { grid-column: 1; grid-row: 1; min-width: 0; overflow-wrap: break-word; line-height: 1.35; }
+.res-stats { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+#results .result > .muted.small:last-child { grid-column: 3; grid-row: 1; }
+/* Smalle telefoon: "Kies" weg (de hele regel is aan te tikken), zodat de naam meer ruimte heeft */
+@media (max-width: 520px) {
+  #results .result { grid-template-columns: 1fr auto; }
+  #results .result > .muted.small:last-child { display: none; }
+}
 .tag.new { background: #FBEFD0; color: #6B4A00; border-color: transparent; }
 @media (prefers-color-scheme: dark) { .tag.new { background: #4A3A12; color: #F6D98A; } }
 button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 700; }
@@ -614,7 +619,7 @@ dialog.lightbox img {
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.20";
+const APP_VERSION = "2026-10-22.21";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -1967,7 +1972,7 @@ function statTags(st, beerId) {
   if (!st) return "";
   const n = st.mine.length, f = st.friends.size;
   return `<span class="res-stats">
-    ${n ? `<span class="tag on">Jij ${n}×</span>` : `<span class="tag new">Nieuw voor jou</span>`}
+    ${n ? `<span class="tag on">Jij ${n}×</span>` : `<span class="tag new">Nieuw</span>`}
     ${f ? `<button type="button" class="tag friends" data-friends="${beerId}">👥 ${f} ${f === 1 ? "vriend" : "vrienden"}</button>` : ""}
   </span>`;
 }
