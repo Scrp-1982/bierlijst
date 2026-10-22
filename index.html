@@ -283,6 +283,11 @@ table.diff td { white-space: normal; }
 .check-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
 .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--hop); flex: none; margin: 0; }
+.pairs { display: grid; gap: 8px; margin-top: 8px; }
+.pair { display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; overflow-wrap: anywhere; }
+.pair input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--hop); flex: none; }
+.pair:has(input:checked) { border-color: var(--hop); background: var(--hop-soft); }
+label.switch.panel { padding: 16px 18px; }
 .import-sum { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); margin-top: 8px; }
 table.preview { border-collapse: collapse; width: 100%; font-size: .88rem; }
@@ -556,7 +561,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.13";
+const APP_VERSION = "2026-10-22.14";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -3341,6 +3346,275 @@ async function renderReview() {
 }
 
 // ---------------------------------------------------------------------
+// Untappd-import: eigen check-ins overzetten
+// ---------------------------------------------------------------------
+const UT_EXTRA = /\b(trappist|trappisten|abbaye|abdij|abbey|der|van|du|des|la|le|les|di|brauerei|brasseries|bryggeri|bryggerierne|cerveceria|group|groupe|gruppe|brouwlokaal|koninklijke|royal|premium|original|company|ale|ales|brew|brewhouse|brewpub|pub|ltd|inc|llc|gmbh|ag|sa|srl|spa|kg)\b/g;
+function utToks(s) {
+  return new Set(normTxt(s).replace(UT_EXTRA, " ").split(" ").filter(t => t.length > 1 || /\d/.test(t)));
+}
+// Untappd zet soms jaartallen of alternatieve namen in de naam: "Tripel / Triple (2024)"
+function utNameVariants(name) {
+  const clean = String(name).replace(/\(\s*\d{4}\s*\)/g, " ").replace(/\([^)]*[^\x00-\u024F][^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  const parts = clean.split(/\s+\/\s+/).map(s => s.trim()).filter(Boolean);
+  return parts.length > 1 ? [clean, ...parts] : [clean];
+}
+function untappdScore(u, d) {
+  const bu = u.bt, bb = d.bt;
+  const inAll = (set, a, b) => set.size > 0 && [...set].every(t => a.has(t) || b.has(t));
+  let best = 0;
+  for (const nu of u.nts) {
+    if (!(inAll(bu, bb, d.nt) || inAll(bb, bu, nu))) continue;
+    const strip = set => { const out = new Set([...set].filter(t => !bu.has(t) && !bb.has(t))); return out.size ? out : set; };
+    const A = strip(nu), B = strip(d.nt);
+    let inter = 0; for (const t of A) if (B.has(t)) inter++;
+    best = Math.max(best, inter / Math.max(A.size, B.size));
+  }
+  return best;
+}
+const UT_STYLES = [
+  [/non-alcoholic|alcohol-free/, "Alcoholvrij"], [/radler|shandy/, "Radler"], [/new england|hazy/, "NEIPA"],
+  [/\bipl\b|india pale lager/, "Lager / Helles"], [/\bipa\b/, "IPA"], [/pale ale/, "Pale Ale"],
+  [/stout/, "Stout"], [/porter/, "Porter"], [/barleywine/, "Barleywine"], [/quadrupel/, "Quadrupel"],
+  [/tripel/, "Tripel"], [/dubbel/, "Dubbel"], [/kriek/, "Kriek"], [/lambic|gueuze|geuze/, "Geuze"],
+  [/saison|farmhouse/, "Saison"], [/smoked|rauch/, "Rauchbier"], [/k[öo]lsch/, "Kölsch"], [/altbier/, "Altbier"],
+  [/m[äa]rzen|oktoberfest|festbier/, "Märzen"], [/wheat|weizen|witbier|weiss|weiß/, "Witbier/Weizen"],
+  [/bock/, "Bock"], [/pilsner|pilsener/, "Pilsener"], [/lager|helles/, "Lager / Helles"],
+  [/strong dark/, "Bruin"], [/blonde|golden/, "Blond"], [/red ale|amber/, "Amber"], [/brown/, "Bruin"],
+];
+function mapUntappdStyle(t) {
+  const s = String(t || "").toLowerCase();
+  for (const [re, label] of UT_STYLES) if (re.test(s)) return label;
+  return t || null;
+}
+function untappdServing(s) {
+  const v = String(s || "").toLowerCase();
+  if (v === "bottle") return "fles";
+  if (v === "can") return "blik";
+  if (["draft", "cask", "taster", "nitro"].includes(v)) return "tap";
+  return v ? "anders" : null;
+}
+function untappdLocation(r) {
+  const venue = (r.venue_name || "").trim();
+  if (!venue) return { name: null, lat: null, lon: null };
+  if (/untappd at home/i.test(venue)) return { name: HOME_LABEL, lat: null, lon: null };
+  const city = (r.venue_city || "").trim();
+  const name = city && !venue.toLowerCase().includes(city.toLowerCase()) ? `${venue}, ${city}` : venue;
+  const lat = parseFloat(r.venue_lat), lon = parseFloat(r.venue_lng);
+  return { name, lat: isFinite(lat) ? lat : null, lon: isFinite(lon) ? lon : null };
+}
+
+async function renderUntappdImport() {
+  setTab("profiel");
+  view().innerHTML = `
+    <div class="stack">
+      <div>
+        <p><a href="#profiel" class="small">Terug naar je profiel</a></p>
+        <h1>Untappd importeren</h1>
+        <p class="muted">Zet je check-ins uit een Untappd-export over naar je eigen lijst, met datum, score, locatie, serveerwijze en foto’s. Je ziet eerst een overzicht; er wordt pas iets opgeslagen als je op Importeren klikt.</p>
+      </div>
+      <div class="panel stack">
+        <label class="btn" style="cursor:pointer;justify-self:start"><input type="file" accept=".csv,text/csv" id="utFile" hidden>Untappd-bestand kiezen</label>
+        <p class="muted small">Gebruik het bestand precies zoals je het van Untappd kreeg, zonder het eerst in Excel te openen en op te slaan. Een bestand opnieuw importeren kan geen kwaad: check-ins die er al in staan, worden overgeslagen.</p>
+      </div>
+      <div id="utResult"></div>
+    </div>`;
+  $("#utFile").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) analyzeUntappd(f); };
+}
+
+async function analyzeUntappd(file) {
+  const box = $("#utResult");
+  box.innerHTML = `<div class="panel"><p class="muted">Bestand lezen en vergelijken met de database…</p></div>`;
+  try {
+    if (typeof Papa === "undefined") throw new Error("De CSV-lezer kon niet worden geladen. Ververs de pagina.");
+    const { rows, headers } = await readCsvFile(file);
+    if (!headers.includes("beer_name") || !headers.includes("checkin_id")) throw new Error("Dit lijkt geen Untappd-export te zijn: de kolommen beer_name en checkin_id ontbreken.");
+
+    // Wat staat er al?
+    const done = new Set();
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from("checkins").select("untappd_checkin_id").eq("user_id", state.user.id).not("untappd_checkin_id", "is", null).range(from, from + 999);
+      if (error) throw new Error(error.message.includes("untappd_checkin_id") ? "Draai eerst update 09_untappd.sql in Supabase." : error.message);
+      data.forEach(r => done.add(String(r.untappd_checkin_id)));
+      if (data.length < 1000) break;
+    }
+    const beers = await fetchAllBeers();
+    const byUntappd = new Map(beers.filter(b => b.untappd_id).map(b => [String(b.untappd_id), b]));
+    const dbT = beers.map(b => ({ b, bt: utToks(b.brewery || ""), nt: utToks(b.name) }));
+
+    const todo = rows.filter(r => r.checkin_id && !done.has(String(r.checkin_id)));
+    const groups = new Map();
+    for (const r of todo) {
+      if (!groups.has(r.bid)) groups.set(r.bid, { bid: r.bid, name: r.beer_name, brewery: r.brewery_name, type: r.beer_type, abv: r.beer_abv, country: r.brewery_country, rows: [] });
+      groups.get(r.bid).rows.push(r);
+    }
+    const plan = { known: [], sure: [], maybe: [], fresh: [] };
+    for (const g of groups.values()) {
+      const hit = byUntappd.get(String(g.bid));
+      if (hit) { plan.known.push({ g, beer: hit }); continue; }
+      const u = { bt: utToks(g.brewery || ""), nts: utNameVariants(g.name).map(utToks) };
+      let best = null, score = 0;
+      for (const d of dbT) { const s = untappdScore(u, d); if (s > score) { score = s; best = d.b; if (s >= 1) break; } }
+      if (score >= 1) plan.sure.push({ g, beer: best });
+      else if (score >= 0.5) plan.maybe.push({ g, beer: best });
+      else plan.fresh.push({ g });
+    }
+    const photos = todo.filter(r => /^https:\/\//.test(r.photo_url || "")).length;
+    const pairRow = (p, i, list, checked) => `
+      <label class="pair">
+        <input type="checkbox" data-list="${list}" data-i="${i}" ${checked ? "checked" : ""}>
+        <span><b>${esc(p.g.name)}</b> <span class="muted small">${esc(p.g.brewery)}</span><br>
+        <span class="small">is in de database: <b>${esc(p.beer.name)}</b> <span class="muted">${esc(p.beer.brewery || "")}</span></span></span>
+      </label>`;
+
+    box.innerHTML = `
+      <div class="stack">
+        <div class="panel">
+          <ul class="import-sum">
+            <li><b>${todo.length}</b> check-ins om te importeren${rows.length - todo.length ? ` (${rows.length - todo.length} stonden er al in)` : ""}</li>
+            <li><b>${groups.size}</b> verschillende bieren, waarvan:</li>
+            <li style="list-style:none;margin-left:12px">${plan.known.length + plan.sure.length} herkend in de database, ${plan.maybe.length} twijfelgevallen, ${plan.fresh.length} nieuw</li>
+          </ul>
+        </div>
+        ${plan.maybe.length ? `
+          <div class="panel stack">
+            <h2>Twijfelgevallen (${plan.maybe.length})</h2>
+            <p class="muted small">Deze lijken op een bier in de database, maar het is niet zeker. Vink aan wat écht hetzelfde bier is. Niet aangevinkt wordt een nieuw bier.</p>
+            <div class="pairs">${plan.maybe.map((p, i) => pairRow(p, i, "maybe", false)).join("")}</div>
+          </div>` : ""}
+        ${plan.sure.length ? `
+          <details class="panel">
+            <summary><b>Automatisch herkend (${plan.sure.length})</b></summary>
+            <p class="muted small" style="margin-top:8px">Naam en brouwerij komen overeen. Haal een vinkje weg als het toch een ander bier is.</p>
+            <div class="pairs">${plan.sure.map((p, i) => pairRow(p, i, "sure", true)).join("")}</div>
+          </details>` : ""}
+        ${plan.fresh.length ? `
+          <details class="panel">
+            <summary><b>Nieuw voor de database (${plan.fresh.length})</b></summary>
+            <div class="table-scroll" style="margin-top:8px"><table class="preview">
+              <thead><tr><th>Naam</th><th>Brouwerij</th><th>Stijl</th><th>Alc.</th><th>Land</th></tr></thead>
+              <tbody>${plan.fresh.map(p => `<tr><td>${esc(p.g.name)}</td><td>${esc(p.g.brewery)}</td><td>${esc(mapUntappdStyle(p.g.type))}</td><td>${esc(p.g.abv)}%</td><td>${esc(normCountry(p.g.country)?.name || "")}</td></tr>`).join("")}</tbody>
+            </table></div>
+          </details>` : ""}
+        ${photos ? `<label class="switch panel"><span><b>Foto’s overnemen (${photos})</b><br><span class="muted small">De app probeert je Untappd-foto’s te kopiëren en te verkleinen. Lukt dat niet, dan wordt naar de foto bij Untappd gelinkt.</span></span><input type="checkbox" id="utPhotos" checked></label>` : ""}
+        ${todo.length ? `<button class="btn block" type="button" id="utGo">Importeren</button>` : `<p class="muted">Er is niets nieuws om te importeren.</p>`}
+        <div id="utProgress" class="panel stack" hidden><span class="bar"><span style="width:0%"></span></span><p class="muted small"></p></div>
+      </div>`;
+
+    const go = $("#utGo");
+    if (go) go.onclick = () => {
+      const pick = list => plan[list].filter((p, i) => document.querySelector(`[data-list="${list}"][data-i="${i}"]`)?.checked);
+      const unpick = list => plan[list].filter((p, i) => !document.querySelector(`[data-list="${list}"][data-i="${i}"]`)?.checked);
+      const matched = [...plan.known, ...pick("sure"), ...pick("maybe")];
+      const fresh = [...plan.fresh, ...unpick("sure").map(p => ({ g: p.g })), ...unpick("maybe").map(p => ({ g: p.g }))];
+      runUntappdImport(matched, fresh, todo, $("#utPhotos") ? $("#utPhotos").checked : false);
+    };
+  } catch (err) {
+    box.innerHTML = `<div class="panel"><p class="error">${esc(err.message || err)}</p></div>`;
+  }
+}
+
+async function runUntappdImport(matched, fresh, todo, withPhotos) {
+  $("#utGo").disabled = true;
+  document.querySelectorAll("#utResult input").forEach(i => i.disabled = true);
+  const prog = $("#utProgress"); prog.hidden = false;
+  const bar = prog.querySelector(".bar > span"), txt = prog.querySelector("p");
+  const step = (label, done, total) => { bar.style.width = `${Math.round(done / Math.max(1, total) * 100)}%`; txt.textContent = `${label}: ${done} van ${total}`; };
+  const result = { photosCopied: 0, photosLinked: 0, beersNew: 0, beersLinked: 0, checkins: 0, failed: 0 };
+
+  try {
+    // 1. Foto's: kopiëren en verkleinen, en anders linken
+    const photoOf = new Map();
+    if (withPhotos) {
+      const list = todo.filter(r => /^https:\/\//.test(r.photo_url || ""));
+      let canCopy = true, n = 0;
+      for (const r of list) {
+        let path = r.photo_url;
+        if (canCopy) {
+          try {
+            const res = await fetch(r.photo_url, { mode: "cors" });
+            if (!res.ok) throw new Error(String(res.status));
+            path = await uploadPhoto(await res.blob());
+            result.photosCopied++;
+          } catch (ex) {
+            if (ex instanceof TypeError) canCopy = false;   // geblokkeerd door de browser: voortaan linken
+            result.photosLinked++;
+          }
+        } else result.photosLinked++;
+        photoOf.set(String(r.checkin_id), path);
+        step("Foto’s verwerken", ++n, list.length);
+      }
+    }
+
+    // 2. Nieuwe bieren toevoegen
+    const beerOfBid = new Map(matched.map(p => [String(p.g.bid), p.beer.id]));
+    for (let i = 0; i < fresh.length; i += 100) {
+      const chunk = fresh.slice(i, i + 100).map(({ g }) => {
+        const firstPhoto = g.rows.map(r => photoOf.get(String(r.checkin_id))).find(Boolean) || null;
+        const abv = parseFloat(g.abv);
+        return {
+          name: g.name.slice(0, 200), brewery: g.brewery || null, style: mapUntappdStyle(g.type),
+          abv: isFinite(abv) ? abv : null, country: normCountry(g.country)?.name || null,
+          untappd_id: Number(g.bid) || null, image_path: firstPhoto, source: "untappd",
+        };
+      });
+      const { data, error } = await sb.from("beers").insert(chunk).select("id, untappd_id");
+      if (error) throw new Error("Bieren toevoegen lukte niet: " + error.message);
+      data.forEach(b => beerOfBid.set(String(b.untappd_id), b.id));
+      result.beersNew += data.length;
+      step("Nieuwe bieren toevoegen", Math.min(i + 100, fresh.length), fresh.length);
+    }
+
+    // 3. Untappd-nummer vastleggen bij herkende bieren
+    const toLink = matched.filter(p => !p.beer.untappd_id);
+    for (let i = 0; i < toLink.length; i += 5) {
+      await Promise.all(toLink.slice(i, i + 5).map(async p => {
+        const { error } = await sb.from("beers").update({ untappd_id: Number(p.g.bid) }).eq("id", p.beer.id);
+        if (!error) result.beersLinked++;
+      }));
+      step("Bieren koppelen", Math.min(i + 5, toLink.length), toLink.length);
+    }
+
+    // 4. Check-ins aanmaken
+    const all = todo.filter(r => beerOfBid.has(String(r.bid))).map(r => {
+      const loc = untappdLocation(r);
+      const rating = parseFloat(r.rating_score);
+      return {
+        beer_id: beerOfBid.get(String(r.bid)),
+        rating: isFinite(rating) && rating > 0 ? rating : null,
+        serving: untappdServing(r.serving_type),
+        location_name: loc.name, latitude: loc.lat, longitude: loc.lon,
+        drunk_at: new Date(String(r.created_at).replace(" ", "T") + "Z").toISOString(),
+        notes: r.comment ? clampChars(r.comment.trim(), 300) : null,
+        photo_path: photoOf.get(String(r.checkin_id)) || null,
+        untappd_checkin_id: Number(r.checkin_id),
+      };
+    });
+    for (let i = 0; i < all.length; i += 100) {
+      const { data, error } = await sb.from("checkins").upsert(all.slice(i, i + 100), { onConflict: "untappd_checkin_id", ignoreDuplicates: true }).select("id");
+      if (error) throw new Error("Check-ins opslaan lukte niet: " + error.message);
+      result.checkins += data.length;
+      step("Check-ins opslaan", Math.min(i + 100, all.length), all.length);
+    }
+    result.failed = todo.length - all.length;
+
+    prog.innerHTML = `
+      <h2>Klaar. Proost!</h2>
+      <ul class="import-sum">
+        <li><b>${result.checkins}</b> check-ins geïmporteerd</li>
+        <li><b>${result.beersNew}</b> nieuwe bieren toegevoegd, <b>${result.beersLinked}</b> bestaande bieren gekoppeld aan Untappd</li>
+        ${withPhotos ? `<li><b>${result.photosCopied}</b> foto’s gekopieerd${result.photosLinked ? `, <b>${result.photosLinked}</b> gelinkt naar Untappd` : ""}</li>` : ""}
+        ${result.failed ? `<li class="error">${result.failed} check-ins konden niet worden verwerkt</li>` : ""}
+      </ul>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn" href="#lijst">Naar mijn bieren</a>
+        <a class="btn soft" href="#badges">Bekijk je badges</a>
+      </div>`;
+  } catch (err) {
+    txt.innerHTML = `<span class="error">${esc(err.message || err)}</span> Wat al is opgeslagen, blijft staan; opnieuw importeren gaat verder waar het bleef.`;
+  }
+}
+
+// ---------------------------------------------------------------------
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
@@ -3922,6 +4196,12 @@ function renderProfile() {
         </div>` : ""}
 
       <div class="panel stack">
+        <h2>Untappd importeren</h2>
+        <p class="muted small">Zet je check-ins uit een Untappd-export over naar je eigen lijst.</p>
+        <a class="btn soft" href="#untappd">Untappd-export importeren</a>
+      </div>
+
+      <div class="panel stack">
         <h2>Exporteren</h2>
         <p class="muted small">Download al je check-ins met de biergegevens. CSV opent direct in Excel.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -4051,6 +4331,7 @@ async function route() {
   if (h === "activiteit") return renderFeed();
   if (h === "badges") return renderBadges();
   if (h === "database") return renderDatabase();
+  if (h === "untappd") return renderUntappdImport();
   if (h === "controleren") return renderReview();
   if (h === "barcodes") return renderBarcodes();
   if (h === "database/nieuw") return renderBeerForm(null);
