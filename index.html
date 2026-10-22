@@ -316,6 +316,23 @@ details.panel[open] summary { margin-bottom: 8px; }
 }
 .chip:hover { border-color: var(--muted); }
 .chip.on { background: var(--hop-soft); border-color: var(--hop); }
+.result { cursor: pointer; }
+.result:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+#results .result { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 10px; }
+.res-main { grid-column: 1; min-width: 0; overflow-wrap: break-word; }
+#results .result > .muted.small:last-child { grid-column: 2; grid-row: 1; }
+.res-stats { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.tag.new { background: #FBEFD0; color: #6B4A00; border-color: transparent; }
+@media (prefers-color-scheme: dark) { .tag.new { background: #4A3A12; color: #F6D98A; } }
+button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 700; }
+.tag.friends { background: var(--surface); color: var(--ink); border-color: var(--hop); }
+.tag.friends:hover { background: var(--hop-soft); }
+.friend-lines { display: grid; gap: 6px; }
+.friend-line { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.friend-line:first-child { border-top: 0; }
+.friend-line .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.friend-score { display: flex; align-items: center; gap: 6px; flex: none; }
+.linkish { appearance: none; border: 0; background: none; padding: 0; color: var(--hop); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -597,7 +614,7 @@ dialog.lightbox img {
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.19";
+const APP_VERSION = "2026-10-22.20";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -1595,17 +1612,19 @@ function renderCheckin() {
     $("#typedCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); lookupTyped(); } };
     $("#newBtn").onclick = () => { stopScanner(); state.draft = { prefill: { name: $("#beerSearch").value.trim() } }; renderCheckin(); };
     let timer, seq = 0, own = [], ext = [], offState = "idle", offMsg = "";
-    const item = (attrs, title, sub) => `
-      <button type="button" class="result" ${attrs}>
-        <span><b>${esc(title)}</b><br><span class="muted small">${esc(sub)}</span></span>
+    let ownStats = {};
+    const item = (attrs, title, sub, extra = "") => `
+      <div class="result" role="button" tabindex="0" ${attrs}>
+        <span class="res-main"><b>${esc(title)}</b><br><span class="muted small">${esc(sub)}</span></span>
+        ${extra}
         <span class="muted small">Kies</span>
-      </button>`;
+      </div>`;
     const cleanQ = () => $("#beerSearch").value.trim().replace(/[,()%*\\]/g, " ").trim();
     const draw = () => {
       const q = cleanQ();
       if (q.length < 2) { $("#results").innerHTML = ""; return; }
       $("#results").innerHTML =
-        (own.length ? `<p class="small muted">In jullie lijst</p>` + own.map(b => item(`data-id="${b.id}"`, b.name, [b.brewery, b.style].filter(Boolean).join(", "))).join("")
+        (own.length ? `<p class="small muted">In jullie lijst</p>` + own.map(b => item(`data-id="${b.id}"`, b.name, [b.brewery, b.style].filter(Boolean).join(", "), statTags(ownStats[b.id], b.id))).join("")
                     : `<p class="small muted">Niet gevonden in jullie lijst.</p>`) +
         (offState === "loading" ? `<p class="small muted" style="margin-top:6px">Zoeken in Open Food Facts…</p>` : "") +
         (offState === "done" ? (ext.length
@@ -1641,12 +1660,25 @@ function renderCheckin() {
         const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8);
         if (my !== seq) return;
         own = data || [];
+        ownStats = {};
+        draw();
+        const st = await statsForBeers(own.map(b => b.id));
+        if (my !== seq) return;
+        ownStats = st;
+        // Beers zonder check-ins krijgen een leeg record, zodat "Nieuw voor jou" verschijnt
+        for (const b of own) ownStats[b.id] ||= { mine: [], friends: new Map() };
         draw();
       }, 300);
     };
     $("#beerSearch").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); runOff(); } };
+    $("#results").onkeydown = ev => { if (ev.key === "Enter" && ev.target.matches(".result")) { ev.preventDefault(); ev.target.click(); } };
     $("#results").onclick = ev => {
       if (ev.target.closest("#offBtn")) return runOff();
+      const fr = ev.target.closest("[data-friends]");
+      if (fr) {
+        ev.stopPropagation();
+        return showFriendsDialog(own.find(x => x.id === fr.dataset.friends), ownStats[fr.dataset.friends]);
+      }
       const r = ev.target.closest("[data-id], [data-off]");
       if (!r) return;
       stopScanner();
@@ -1842,6 +1874,10 @@ async function loadBeerStats(beer) {
       p.n++; if (c.rating != null) p.ratings.push(Number(c.rating));
     }
     const friends = Object.values(per).sort((a, b) => b.n - a.n);
+    setTimeout(() => {
+      const more = $("#statsMore");
+      if (more) more.onclick = async () => showFriendsDialog(beer, (await statsForBeers([beer.id]))[beer.id]);
+    });
     const avg = list => list.length ? nf(list.reduce((s, x) => s + x, 0) / list.length, 2) : null;
     const myAvg = avg(mine.filter(c => c.rating != null).map(c => Number(c.rating)));
     const total = friends.reduce((s, f) => s + f.n, 0);
@@ -1853,7 +1889,7 @@ async function loadBeerStats(beer) {
           : "Dit bier heb je nog nooit ingecheckt. Een nieuwe voor je lijst."}</span>
       </div>
       ${friends.length ? `
-        <p class="small" style="margin-top:12px"><b>${friends.length} ${friends.length === 1 ? "vriend heeft" : "vrienden hebben"} dit gedronken</b>, samen ${total} ${total === 1 ? "keer" : "keer"}:</p>
+        <p class="small" style="margin-top:12px"><b>${friends.length} ${friends.length === 1 ? "vriend heeft" : "vrienden hebben"} dit gedronken</b>, samen ${total} keer: <button type="button" class="linkish" id="statsMore">bekijk</button></p>
         <div class="friend-stats">
           ${friends.map(f => `
             <div class="friend-stat">
@@ -1897,6 +1933,73 @@ function bindBarcodePhoto(onCode) {
       e.target.value = "";
     }
   };
+}
+
+// ---------------------------------------------------------------------
+// Wie heeft dit bier al gedronken? (jij en je vrienden)
+// ---------------------------------------------------------------------
+let _friendCache = { at: 0, ids: [] };
+async function cachedFriendIds() {
+  if (Date.now() - _friendCache.at < 60000) return _friendCache.ids;
+  _friendCache = { at: Date.now(), ids: await friendIds() };
+  return _friendCache.ids;
+}
+async function statsForBeers(beerIds) {
+  const out = {};
+  if (!beerIds.length) return out;
+  const ids = [state.user.id, ...(await cachedFriendIds())];
+  const { data, error } = await sb
+    .from("checkins")
+    .select("beer_id, user_id, rating, drunk_at, tz, profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path)")
+    .in("beer_id", beerIds)
+    .in("user_id", ids)
+    .order("drunk_at", { ascending: false });
+  if (error) return out;
+  for (const c of data) {
+    const st = (out[c.beer_id] ||= { mine: [], friends: new Map() });
+    if (c.user_id === state.user.id) { st.mine.push(c); continue; }
+    if (!st.friends.has(c.user_id)) st.friends.set(c.user_id, { profile: c.profile, list: [] });
+    st.friends.get(c.user_id).list.push(c);
+  }
+  return out;
+}
+function statTags(st, beerId) {
+  if (!st) return "";
+  const n = st.mine.length, f = st.friends.size;
+  return `<span class="res-stats">
+    ${n ? `<span class="tag on">Jij ${n}×</span>` : `<span class="tag new">Nieuw voor jou</span>`}
+    ${f ? `<button type="button" class="tag friends" data-friends="${beerId}">👥 ${f} ${f === 1 ? "vriend" : "vrienden"}</button>` : ""}
+  </span>`;
+}
+function showFriendsDialog(beer, st) {
+  const avg = list => { const r = list.filter(c => c.rating != null).map(c => Number(c.rating)); return r.length ? r.reduce((a, b) => a + b, 0) / r.length : null; };
+  const line = (profile, list, me) => {
+    const a = avg(list);
+    return `
+      <div class="friend-line">
+        ${avatarHtml(me ? state.me : profile, 40)}
+        <div class="grow">
+          <b>${me ? "Jij" : esc(profile?.display_name || "Iemand")}</b> <span class="muted small">${list.length}×</span><br>
+          <span class="muted small">Laatst op ${fmtDate(list[0].drunk_at, list[0].tz)}</span>
+        </div>
+        <div class="friend-score">${a != null ? `${stars(a)}<b>${nf(a, 2)}</b>` : `<span class="muted small">Geen score</span>`}</div>
+      </div>`;
+  };
+  const friends = [...(st?.friends.values() || [])].sort((x, y) => y.list.length - x.list.length);
+  openDialog(`
+    <div class="stack">
+      <div>
+        <h2>${esc(beer.name)}</h2>
+        ${beer.brewery ? `<p class="muted">${esc(beer.brewery)}</p>` : ""}
+      </div>
+      <div class="friend-lines">
+        ${st?.mine.length ? line(null, st.mine, true) : `<p class="muted">Jij hebt dit bier nog niet ingecheckt.</p>`}
+        ${friends.length ? `<h3 style="margin-top:6px">${friends.length} ${friends.length === 1 ? "vriend heeft" : "vrienden hebben"} dit gedronken</h3>${friends.map(f => line(f.profile, f.list)).join("")}`
+          : `<p class="muted">Nog geen van je vrienden heeft dit bier ingecheckt.</p>`}
+      </div>
+      <button class="btn block" type="button" id="fdCheckin">Dit bier inchecken</button>
+    </div>`);
+  $("#fdCheckin").onclick = () => { state.draft = { beer }; closeDialog(); if (location.hash === "#inchecken") renderCheckin(); else location.hash = "inchecken"; };
 }
 
 async function startScan(onCode = handleBarcode) {
