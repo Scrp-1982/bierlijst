@@ -256,6 +256,18 @@ textarea.input { min-height: 92px; resize: vertical; }
 .friend-stat { display: flex; align-items: center; gap: 10px; }
 .friend-stat .avatar { width: 32px; height: 32px; font-size: .85rem; }
 .db-list { display: grid; gap: 8px; }
+.tag.warn { background: #FBEFD0; color: #6B4A00; border-color: transparent; }
+@media (prefers-color-scheme: dark) { .tag.warn { background: #4A3A12; color: #F6D98A; } }
+.notice { background: var(--hop-soft); border-radius: var(--radius); padding: 10px 14px; margin-top: 8px; }
+fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
+fieldset.plain:disabled .input { opacity: .6; }
+.role-switches { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
+.review-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px; display: grid; gap: 10px; }
+.review-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.review-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+table.diff td { white-space: normal; }
+.diff-img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+.count-badge { margin-left: auto; background: var(--danger); color: #fff; border-radius: 999px; font-size: .78rem; font-weight: 700; padding: 1px 8px; }
 .bc-row {
   display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; align-items: center;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 8px;
@@ -525,6 +537,7 @@ section.stack > h2 + * { margin-top: 10px; }
   <a href="#profiel" data-tab="profiel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>Profiel</a>
   <div class="drawer-admin" id="adminGroup" hidden>
     <hr>
+    <a href="#controleren" data-tab="controleren"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>Controleren<span class="count-badge" id="reviewCount" hidden></span></a>
     <a href="#beheer" data-tab="beheer"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Beheer</a>
   </div>
 </nav>
@@ -543,7 +556,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.11";
+const APP_VERSION = "2026-10-22.13";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -623,6 +636,20 @@ document.addEventListener("input", e => {
   if (cnt) { cnt.textContent = `${n} / ${limit}`; cnt.classList.toggle("full", n >= limit); }
 });
 
+// Rechten voor de bierdatabase
+function canEditAll(beer) {
+  if (!state.user) return false;
+  if (state.me?.is_admin || state.me?.is_db_editor) return true;
+  return !!beer && beer.created_by === state.user.id && beer.reviewed === false;
+}
+function editLabel(b) {
+  if (canEditAll(b)) return b.barcode && b.style && b.abv != null ? "Gegevens bewerken" : "Gegevens aanvullen";
+  if (!b.barcode && !b.image_path) return "Foto of barcode toevoegen";
+  if (!b.barcode) return "Barcode toevoegen";
+  if (!b.image_path) return "Foto toevoegen";
+  return null;
+}
+
 // Thuis drinken: vaste naam, nooit met coördinaten (privacy)
 const HOME_LABEL = "Tapped at Home";
 function isHome(name) { return /^(tapped at home|untappd at home|at home|home|thuis)$/i.test(String(name || "").trim()); }
@@ -651,6 +678,7 @@ function setNav(loggedIn) {
   $("#menuBtn").hidden = !loggedIn;
   if (!loggedIn) closeMenu();
   $("#adminGroup").hidden = !state.me?.is_admin;
+  if (loggedIn && state.me?.is_admin) updateReviewCount();
   $("#topRight").innerHTML = loggedIn ? `
     <a class="icon-btn add" href="#inchecken" aria-label="Bier inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></a>` : "";
 }
@@ -1038,7 +1066,7 @@ async function showBeer(g, { own }) {
       ${b.description ? `<p>${esc(b.description)}</p>` : ""}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${state.user ? `<button class="btn" id="againBtn">Opnieuw inchecken</button>` : ""}
-        ${canEdit ? `<button class="btn ghost" id="editBtn">${b.barcode && b.style && b.abv != null ? "Gegevens bewerken" : "Gegevens aanvullen"}</button>` : ""}
+        ${canEdit && editLabel(b) ? `<button class="btn ghost" id="editBtn">${editLabel(b)}</button>` : ""}
       </div>
       <div>
         <h3>${own ? "Jouw check-ins" : "Check-ins"}</h3>
@@ -2509,21 +2537,37 @@ function openImportDialog() {
       const byId = new Map(existing.map(b => [b.id, b]));
 
       const plan = { insert: [], fill: [], same: 0, skipped: 0, badCodes: 0, dupes: 0, badList: [], dupeList: [] };
-      const seen = new Set();
+      const sameBeer = (a, b) => normTxt(a.name) === normTxt(b.name) && normTxt(a.brewery) === normTxt(b.brewery);
+      const seenKeys = new Set();      // naam + brouwerij (of id)
+      const seenCodes = new Map();     // barcode -> eerste bier in het bestand
+      const dropCode = (nb, reason) => {
+        plan.badCodes++;
+        plan.badList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: nb.barcode, reden: reason });
+        nb.barcode = null;
+      };
       for (const r of rows) {
         const res = rowToBeer(r, map);
         if (res.skip) { plan.skipped++; continue; }
         if (res.badCode) { plan.badCodes++; plan.badList.push({ naam: res.beer.name, brouwerij: res.beer.brewery, barcode: res.badCode.raw, reden: res.badCode.reason }); }
         const nb = res.beer;
-        const k = res.id || nb.barcode || key(nb);
-        if (seen.has(k)) { plan.dupes++; plan.dupeList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: nb.barcode }); continue; }
-        seen.add(k);
-        const match = (res.id && byId.get(res.id)) || (nb.barcode && byCode.get(nb.barcode)) || byName.get(key(nb));
-        if (!match) {
-          if (nb.barcode && byCode.has(nb.barcode)) { plan.same++; continue; }
-          plan.insert.push({ ...nb, source: "csv" });
-          continue;
+        // Dubbel = zelfde id, of zelfde naam en brouwerij
+        const k = res.id || key(nb);
+        if (seenKeys.has(k)) { plan.dupes++; plan.dupeList.push({ naam: nb.name, brouwerij: nb.brewery, barcode: nb.barcode }); continue; }
+        seenKeys.add(k);
+        // Zelfde barcode bij een ander bier in het bestand: bier wel, barcode niet
+        if (nb.barcode) {
+          const first = seenCodes.get(nb.barcode);
+          if (first && !sameBeer(first, nb)) dropCode(nb, `deze barcode staat ook bij “${first.name}” in je bestand`);
+          else if (!first) seenCodes.set(nb.barcode, nb);
         }
+        let match = (res.id && byId.get(res.id)) || null;
+        if (!match && nb.barcode) {
+          const owner = byCode.get(nb.barcode);
+          if (owner && sameBeer(owner, nb)) match = owner;
+          else if (owner) dropCode(nb, `deze barcode hoort in de database al bij “${owner.name}”`);
+        }
+        if (!match) match = byName.get(key(nb)) || null;
+        if (!match) { plan.insert.push({ ...nb, source: "csv" }); continue; }
         const patch = {};
         for (const f of ["brewery", "style", "abv", "country", "barcode", "description", "image_path"]) {
           if ((match[f] == null || match[f] === "") && nb[f] != null && nb[f] !== "") {
@@ -2550,12 +2594,12 @@ function openImportDialog() {
               <li><b>${plan.same}</b> ${plan.same === 1 ? "staat" : "staan"} al volledig in de database</li>
               ${plan.dupes ? `<li><b>${plan.dupes}</b> dubbel in het bestand, één keer meegenomen</li>` : ""}
               ${plan.skipped ? `<li><b>${plan.skipped}</b> ${plan.skipped === 1 ? "regel" : "regels"} zonder naam, overgeslagen</li>` : ""}
-              ${plan.badCodes ? `<li><b>${plan.badCodes}</b> ${plan.badCodes === 1 ? "ongeldige barcode" : "ongeldige barcodes"} weggelaten (het bier zelf wordt wel toegevoegd)</li>` : ""}
+              ${plan.badCodes ? `<li><b>${plan.badCodes}</b> ${plan.badCodes === 1 ? "barcode" : "barcodes"} weggelaten omdat ze ongeldig of al in gebruik zijn (het bier zelf wordt wel toegevoegd)</li>` : ""}
             </ul>
           </div>
           ${plan.badList.length ? `
             <details class="panel">
-              <summary><b>Ongeldige barcodes bekijken (${plan.badList.length})</b></summary>
+              <summary><b>Weggelaten barcodes bekijken (${plan.badList.length})</b></summary>
               <div class="table-scroll"><table class="preview">
                 <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode in bestand</th><th>Reden</th></tr></thead>
                 <tbody>${plan.badList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td><td class="wrap">${esc(r.reden)}</td></tr>`).join("")}</tbody>
@@ -2565,7 +2609,7 @@ function openImportDialog() {
           ${plan.dupeList.length ? `
             <details class="panel">
               <summary><b>Dubbele regels bekijken (${plan.dupeList.length})</b></summary>
-              <p class="muted small" style="margin-top:8px">Deze regels hebben dezelfde barcode, of dezelfde naam en brouwerij, als een eerdere regel in je bestand. Alleen de eerste is meegenomen.</p>
+              <p class="muted small" style="margin-top:8px">Deze regels hebben dezelfde naam en brouwerij als een eerdere regel in je bestand. Alleen de eerste is meegenomen.</p>
               <div class="table-scroll"><table class="preview">
                 <thead><tr><th>Naam</th><th>Brouwerij</th><th>Barcode</th></tr></thead>
                 <tbody>${plan.dupeList.map(r => `<tr><td>${esc(r.naam)}</td><td>${esc(r.brouwerij)}</td><td>${esc(r.barcode)}</td></tr>`).join("")}</tbody>
@@ -2672,6 +2716,7 @@ async function renderDatabase() {
           <option value="nophoto">Zonder foto</option>
           <option value="incomplete">Onvolledig</option>
           <option value="new">Nog niet gedronken</option>
+          ${state.me?.is_admin ? `<option value="review">Te controleren</option>` : ""}
         </select>
       </div>
       <div class="db-list" id="dbList"></div>
@@ -2693,6 +2738,7 @@ async function renderDatabase() {
           ${myCount[b.id] ? `<span class="tag on">Jij: ${myCount[b.id]}×</span>` : ""}
           ${b.barcode ? "" : `<span class="tag">Geen barcode</span>`}
           ${!b.style || b.abv == null || !b.country ? `<span class="tag">Onvolledig</span>` : ""}
+          ${b.reviewed === false ? `<span class="tag warn">Te controleren</span>` : ""}
         </span>
       </span>
     </button>`;
@@ -2705,6 +2751,7 @@ async function renderDatabase() {
     if (q) query = query.or(`name.ilike.%${q}%,brewery.ilike.%${q}%,style.ilike.%${q}%,description.ilike.%${q}%`);
     if (filter === "nocode") query = query.is("barcode", null);
     if (filter === "nophoto") query = query.is("image_path", null);
+    if (filter === "review") query = query.eq("reviewed", false);
     if (filter === "incomplete") query = query.or("style.is.null,abv.is.null,country.is.null");
     if (filter === "new" && Object.keys(myCount).length) query = query.not("id", "in", `(${Object.keys(myCount).join(",")})`);
     const from = append ? items.length : 0;
@@ -2747,7 +2794,7 @@ function showDbBeer(b) {
       ${b.description ? `<p>${esc(b.description)}</p>` : ""}
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" id="dbCheckin" type="button">Inchecken</button>
-        <a class="btn ghost" href="#database/bewerk/${b.id}">${b.barcode && b.style && b.abv != null ? "Gegevens bewerken" : "Gegevens aanvullen"}</a>
+        ${editLabel(b) ? `<a class="btn ghost" href="#database/bewerk/${b.id}">${editLabel(b)}</a>` : ""}
       </div>
       <div class="panel beer-stats" id="beerStats"><p class="muted small">Kijken wie dit al heeft gedronken…</p></div>
     </div>`);
@@ -2769,6 +2816,10 @@ async function renderBeerForm(id) {
   if (isNew && state.formPrefill) { beer = { ...state.formPrefill }; source = state.formPrefill.source || "manual"; lookedUpImage = state.formPrefill.image_path || null; state.formPrefill = null; }
   let linked = 0;
   if (!isNew) ({ count: linked } = await sb.from("checkins").select("id", { count: "exact", head: true }).eq("beer_id", id));
+  const full = isNew || canEditAll(beer);
+  const codeLocked = !full && !!beer.barcode;
+  const photoLocked = !full && !!beer.image_path;
+  const reviewNote = state.me?.is_admin ? "" : `<p class="muted small">Wat je toevoegt of wijzigt, is direct zichtbaar. De beheerder controleert het daarna nog.</p>`;
 
   view().innerHTML = `
     <form class="stack" id="beerForm" novalidate>
@@ -2777,31 +2828,34 @@ async function renderBeerForm(id) {
         <h1>${isNew ? "Bier toevoegen" : "Bier bewerken"}</h1>
         ${isNew ? `<p class="muted">Het bier komt in de database zonder dat je het incheckt.</p>`
           : `<p class="muted">${linked ? `Wijzigingen gelden direct voor alle ${linked} ${linked === 1 ? "check-in" : "check-ins"} van dit bier, bij iedereen.` : "Er is nog niet op dit bier ingecheckt."}</p>`}
+        ${!full ? `<p class="notice">Je kunt bij dit bier een ontbrekende foto of barcode toevoegen. Andere gegevens kan een databasebeheerder aanpassen.</p>` : ""}
+        ${reviewNote}
       </div>
 
       <div class="panel stack">
         <h2>Barcode</h2>
+        ${codeLocked ? `<p><b>${esc(beer.barcode)}</b></p><input type="hidden" name="barcode" id="formCode" value="${esc(beer.barcode)}">` : `
         ${barcodeToolsHtml()}
         <div class="type-code">
           <input class="input" name="barcode" id="formCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode" value="${esc(beer.barcode)}">
           <button class="btn ghost" type="button" id="formLookup">Opzoeken</button>
         </div>
-        <p class="muted small" id="lookupMsg">Scan of typ de barcode en kies Opzoeken. Lege velden worden dan aangevuld uit alle bronnen.</p>
+        <p class="muted small" id="lookupMsg">${full ? "Scan of typ de barcode en kies Opzoeken. Lege velden worden dan aangevuld uit alle bronnen." : "Scan of typ de barcode van dit bier."}</p>`}
       </div>
 
       <div class="panel stack">
         <h2>Gegevens</h2>
-        ${beerFields(beer)}
+        <fieldset class="plain" ${full ? "" : "disabled"}>${beerFields(beer)}</fieldset>
       </div>
 
       <div class="panel stack">
         <h2>Foto</h2>
         <div class="photo-pick">
           <img id="beerPhotoPreview" alt="" ${beer.image_path ? `src="${esc(photoUrl(beer.image_path))}"` : "hidden"}>
-          <label class="btn soft small" style="cursor:pointer">
+          ${photoLocked ? "" : `<label class="btn soft small" style="cursor:pointer">
             <input type="file" accept="image/*" id="beerPhoto" hidden>
             ${beer.image_path ? "Andere foto kiezen" : "Foto kiezen"}
-          </label>
+          </label>`}
         </div>
       </div>
 
@@ -2827,6 +2881,7 @@ async function renderBeerForm(id) {
 
   const fill = pre => {
     let n = 0;
+    if (!full) return 0;
     for (const k of ["name", "brewery", "style", "abv", "country", "description"]) {
       const el = form.elements[k];
       if (el && !String(el.value).trim() && pre[k] != null && pre[k] !== "") { el.value = pre[k]; n++; }
@@ -2856,16 +2911,15 @@ async function renderBeerForm(id) {
     }
   };
 
-  $("#scanBtn").onclick = () => startScan(onCode);
-  bindBarcodePhoto(onCode);
-  $("#formLookup").onclick = () => {
+  if ($("#scanBtn")) { $("#scanBtn").onclick = () => startScan(onCode); bindBarcodePhoto(onCode); }
+  if ($("#formLookup")) $("#formLookup").onclick = () => {
     const code = cleanBarcode($("#formCode").value);
     if (!validBarcode(code)) return toast("Deze barcode klopt niet. Controleer de cijfers onder de streepjes.");
     stopScanner();
     onCode(code);
   };
-  $("#formCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); $("#formLookup").click(); } };
-  $("#beerPhoto").onchange = e => {
+  $("#formCode").onkeydown = e => { if (e.key === "Enter" && $("#formLookup")) { e.preventDefault(); $("#formLookup").click(); } };
+  if ($("#beerPhoto")) $("#beerPhoto").onchange = e => {
     photoFile = e.target.files[0] || null;
     if (photoFile) { const img = $("#beerPhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
   };
@@ -2919,17 +2973,26 @@ async function renderBeerForm(id) {
     const buttons = form.querySelectorAll("button[type=submit]");
     const fail = m => { err.textContent = m; err.hidden = false; buttons.forEach(b => b.disabled = false); };
     err.hidden = true; buttons.forEach(b => b.disabled = true);
-    const fields = readBeerFields(new FormData(form));
+    // Een uitgeschakelde fieldset stuurt niets mee: dan de bestaande gegevens gebruiken
+    const fd = new FormData(form);
+    const fields = full ? readBeerFields(fd) : { name: beer.name, barcode: cleanBarcode(fd.get("barcode")) || null };
     if (!fields.name) return fail("Vul de naam van het bier in.");
     if (fields.barcode && !validBarcode(fields.barcode)) return fail("Deze barcode klopt niet. Controleer de cijfers, of laat het veld leeg.");
     try {
       if (photoFile) fields.image_path = await uploadPhoto(photoFile);
       else if (lookedUpImage) fields.image_path = lookedUpImage;
+      let payload = fields;
+      if (!isNew) {
+        // Alleen echt gewijzigde velden versturen
+        const same = (a, b) => (a == null || a === "" ? null : String(a)) === (b == null || b === "" ? null : String(b));
+        payload = Object.fromEntries(Object.entries(fields).filter(([k, v]) => !same(v, beer[k])));
+        if (!Object.keys(payload).length) { toast("Er is niets gewijzigd"); buttons.forEach(b => b.disabled = false); return; }
+      }
       const { data, error } = isNew
-        ? await sb.from("beers").insert({ ...fields, source }).select().single()
-        : await sb.from("beers").update(fields).eq("id", beer.id).select().single();
-      if (error) return fail(error.code === "23505" ? "Deze barcode hoort al bij een ander bier in de database." : "Opslaan lukte niet: " + error.message);
-      toast(isNew ? `${data.name} toegevoegd aan de database` : "Wijzigingen opgeslagen");
+        ? await sb.from("beers").insert({ ...payload, source }).select().single()
+        : await sb.from("beers").update(payload).eq("id", beer.id).select().single();
+      if (error) return fail(error.code === "23505" ? "Deze barcode hoort al bij een ander bier in de database." : error.message);
+      toast((isNew ? `${data.name} toegevoegd aan de database` : "Wijzigingen opgeslagen") + (state.me?.is_admin ? "" : ". De beheerder controleert het nog."));
       if (then === "checkin") { state.draft = { beer: data }; location.hash = "inchecken"; }
       else location.hash = "database";
     } catch (ex) {
@@ -3190,6 +3253,90 @@ async function handleBcScan(code) {
   $("#bcNew").onclick = () => {
     state.formPrefill = { barcode: code, name: f.name || $("#bcFind").value.trim(), brewery: f.brewery || "", abv: f.abv ?? null, country: f.country || "", image_path: f.image_path || null, source: f.source || "manual" };
     location.hash = "database/nieuw";
+  };
+}
+
+// ---------------------------------------------------------------------
+// Controleren: wijzigingen van gebruikers goedkeuren (app-beheerder)
+// ---------------------------------------------------------------------
+const FIELD_NL = { name: "Naam", brewery: "Brouwerij", style: "Stijl", abv: "Alcohol", country: "Land", description: "Omschrijving", image_path: "Foto", barcode: "Barcode" };
+
+function fieldValue(k, v) {
+  if (v == null || v === "") return `<span class="muted">leeg</span>`;
+  if (k === "image_path") return `<img class="diff-img" src="${esc(photoUrl(v))}" alt="">`;
+  if (k === "abv") return esc(nf(v)) + "%";
+  return esc(v);
+}
+
+async function updateReviewCount() {
+  if (!state.me?.is_admin) return;
+  const { count } = await sb.from("beer_changes").select("id", { count: "exact", head: true }).eq("status", "open");
+  const el = $("#reviewCount");
+  if (el) { el.textContent = count || ""; el.hidden = !count; }
+}
+
+async function renderReview() {
+  setTab("controleren");
+  if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
+  view().innerHTML = `<div class="loading">Wijzigingen ophalen…</div>`;
+  const { data, error } = await sb
+    .from("beer_changes")
+    .select("*, beer:beers(id, name, brewery, image_path, reviewed), user:profiles!beer_changes_user_id_fkey(display_name)")
+    .eq("status", "open")
+    .order("created_at", { ascending: true })
+    .limit(200);
+  if (error) { view().innerHTML = `<p class="error">Laden lukte niet: ${esc(error.message)}</p>`; return; }
+  let items = data || [];
+
+  const card = c => {
+    const keys = Object.keys(c.new_values || {});
+    return `
+      <article class="review-card" data-change="${c.id}">
+        <div class="review-head">
+          <span class="tag ${c.kind === "nieuw" ? "on" : "warn"}">${c.kind === "nieuw" ? "Nieuw bier" : "Wijziging"}</span>
+          <span class="muted small">${esc(c.user?.display_name || "Iemand")}, ${relTime(c.created_at)}</span>
+        </div>
+        <h3><a href="#database/bewerk/${c.beer_id}">${esc(c.beer?.name || "Bier")}</a>${c.beer?.brewery ? ` <span class="muted small">${esc(c.beer.brewery)}</span>` : ""}</h3>
+        <div class="table-scroll"><table class="preview diff">
+          <thead><tr><th>Veld</th>${c.kind === "nieuw" ? "" : "<th>Was</th>"}<th>${c.kind === "nieuw" ? "Waarde" : "Wordt"}</th></tr></thead>
+          <tbody>${keys.map(k => `<tr><td>${FIELD_NL[k] || esc(k)}</td>${c.kind === "nieuw" ? "" : `<td>${fieldValue(k, c.old_values?.[k])}</td>`}<td>${fieldValue(k, c.new_values[k])}</td></tr>`).join("")}</tbody>
+        </table></div>
+        <div class="review-actions">
+          <button class="btn small" type="button" data-approve="${c.id}">Goedkeuren</button>
+          <a class="btn ghost small" href="#database/bewerk/${c.beer_id}">Bewerken</a>
+          <button class="btn danger small" type="button" data-reject="${c.id}" data-kind="${c.kind}" data-name="${esc(c.beer?.name || "")}">Afwijzen</button>
+        </div>
+      </article>`;
+  };
+  const draw = () => {
+    view().innerHTML = `
+      <div class="stack">
+        <div>
+          <h1>Controleren</h1>
+          <p class="muted">${items.length ? `${items.length} ${items.length === 1 ? "wijziging wacht" : "wijzigingen wachten"} op goedkeuring, oudste bovenaan.` : "Alles is gecontroleerd. Proost!"}</p>
+        </div>
+        <div class="stack">${items.map(card).join("")}</div>
+      </div>`;
+  };
+  draw();
+
+  view().onclick = async e => {
+    const ap = e.target.closest("[data-approve]"), rj = e.target.closest("[data-reject]");
+    if (!ap && !rj) return;
+    const id = (ap || rj).dataset.approve || (ap || rj).dataset.reject;
+    if (rj) {
+      const msg = rj.dataset.kind === "nieuw"
+        ? `Nieuw bier “${rj.dataset.name}” afwijzen? Het bier wordt uit de database verwijderd.`
+        : `Deze wijziging van “${rj.dataset.name}” afwijzen? De oude gegevens worden teruggezet.`;
+      if (!confirm(msg)) return;
+    }
+    (ap || rj).disabled = true;
+    const { data: res, error } = await sb.rpc("admin_review_change", { change_id: id, approve: !!ap });
+    if (error) { (ap || rj).disabled = false; return toast(error.message); }
+    toast(res === "goedgekeurd" ? "Goedgekeurd" : res === "verwijderd" ? "Bier verwijderd" : "Wijziging teruggedraaid");
+    items = res === "verwijderd" ? items.filter(x => x.beer_id !== items.find(y => y.id === id)?.beer_id) : items.filter(x => x.id !== id);
+    draw();
+    updateReviewCount();
   };
 }
 
@@ -3562,10 +3709,16 @@ async function renderAdmin() {
                 <span class="small ${u.is_blocked ? "error" : "muted"}">${u.is_blocked ? "Geblokkeerd" : u.last_sign_in_at ? "Laatst ingelogd " + fmtDate(u.last_sign_in_at) : "Nog niet ingelogd"}</span>
               </div>
             </div>
-            <label class="switch admin-switch">
-              <span>Beheerder</span>
-              <input type="checkbox" data-admin="${u.id}" ${u.is_admin ? "checked" : ""} ${u.is_blocked ? "disabled" : ""}>
-            </label>
+            <div class="role-switches">
+              <label class="switch admin-switch">
+                <span>Beheerder</span>
+                <input type="checkbox" data-admin="${u.id}" ${u.is_admin ? "checked" : ""} ${u.is_blocked ? "disabled" : ""}>
+              </label>
+              <label class="switch admin-switch" title="Mag alle gegevens in de bierdatabase wijzigen">
+                <span>Database</span>
+                <input type="checkbox" data-dbeditor="${u.id}" ${u.is_db_editor || u.is_admin ? "checked" : ""} ${u.is_admin || u.is_blocked ? "disabled" : ""}>
+              </label>
+            </div>
             ${me ? "" : `
             <div class="user-actions">
               <button class="btn ghost small" data-reset="${u.id}" data-name="${name}" ${u.is_blocked ? "disabled" : ""}>Wachtwoord resetten</button>
@@ -3592,6 +3745,14 @@ async function renderAdmin() {
   };
 
   view().onchange = async e => {
+    const ed = e.target.closest("[data-dbeditor]");
+    if (ed) {
+      ed.disabled = true;
+      const { error } = await sb.rpc("admin_set_db_editor", { target: ed.dataset.dbeditor, value: ed.checked });
+      ed.disabled = false;
+      if (error) { ed.checked = !ed.checked; return toast(error.message); }
+      return toast(ed.checked ? "Mag nu de hele database bijwerken" : "Mag alleen nog ontbrekende foto’s en barcodes toevoegen");
+    }
     const cb = e.target.closest("[data-admin]");
     if (!cb) return;
     cb.disabled = true;
@@ -3890,6 +4051,7 @@ async function route() {
   if (h === "activiteit") return renderFeed();
   if (h === "badges") return renderBadges();
   if (h === "database") return renderDatabase();
+  if (h === "controleren") return renderReview();
   if (h === "barcodes") return renderBarcodes();
   if (h === "database/nieuw") return renderBeerForm(null);
   if (h.startsWith("database/bewerk/")) return renderBeerForm(h.slice(16));
