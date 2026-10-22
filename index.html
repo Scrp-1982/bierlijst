@@ -561,7 +561,7 @@ section.stack > h2 + * { margin-top: 10px; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-22.14";
+const APP_VERSION = "2026-10-22.15";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -582,7 +582,45 @@ function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 const nf = (n, d = 1) => Number(n).toLocaleString("nl-NL", { minimumFractionDigits: d, maximumFractionDigits: 2 });
-const fmtDate = iso => new Date(iso).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" });
+// Tijden: elke check-in onthoudt de tijdzone waar hij gedronken is
+const DEVICE_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam"; } catch { return "Europe/Amsterdam"; } })();
+const _tzFmt = new Map();
+function partsIn(iso, tz) {
+  const z = tz || DEVICE_TZ;
+  let f = _tzFmt.get(z);
+  if (!f) {
+    const o = { hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", weekday: "short" };
+    try { f = new Intl.DateTimeFormat("en-US", { ...o, timeZone: z }); } catch { f = new Intl.DateTimeFormat("en-US", o); }
+    _tzFmt.set(z, f);
+  }
+  const p = {};
+  for (const x of f.formatToParts(new Date(iso))) p[x.type] = x.value;
+  return { y: +p.year, m: +p.month, d: +p.day, h: (+p.hour) % 24, mi: +p.minute, wd: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday) };
+}
+// Plaatselijke kloktijd in een tijdzone omrekenen naar een echt tijdstip
+function wallToUtc(y, m, d, h, mi, s, tz) {
+  const target = Date.UTC(y, m - 1, d, h, mi);
+  let guess = target + (s || 0) * 1000;
+  for (let i = 0; i < 3; i++) {
+    const p = partsIn(new Date(guess).toISOString(), tz);
+    const diff = Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi) - target;
+    if (!diff) break;
+    guess -= diff;
+  }
+  return new Date(guess);
+}
+const fmtDate = (iso, tz) => {
+  const o = { day: "numeric", month: "short", year: "numeric" };
+  try { return new Date(iso).toLocaleDateString("nl-NL", tz ? { ...o, timeZone: tz } : o); }
+  catch { return new Date(iso).toLocaleDateString("nl-NL", o); }
+};
+// Datum en tijd zoals het daar was, met de plaats erbij als het een andere tijdzone is
+function fmtWhen(iso, tz) {
+  const p = partsIn(iso, tz);
+  const time = `${String(p.h).padStart(2, "0")}:${String(p.mi).padStart(2, "0")}`;
+  const other = tz && tz !== DEVICE_TZ ? ` plaatselijke tijd (${tz.split("/").pop().replace(/_/g, " ")})` : "";
+  return `${fmtDate(iso, tz)}, ${time}${other}`;
+}
 
 let toastTimer;
 function toast(msg) {
@@ -780,6 +818,7 @@ function groupBeers(checkins) {
     const rs = g.checkins.map(c => c.rating).filter(r => r != null).map(Number);
     g.avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
     g.last = g.checkins[0].drunk_at;
+    g.lastTz = g.checkins[0].tz;
     g.photo = (g.checkins.find(c => c.photo_path) || {}).photo_path || g.beer.image_path;
     return g;
   });
@@ -968,7 +1007,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
           </div>
           <div class="beer-foot">
             ${stars(g.avg)}
-            <span class="count">${g.checkins.length > 1 ? `${g.checkins.length} keer` : fmtDate(g.last)}</span>
+            <span class="count">${g.checkins.length > 1 ? `${g.checkins.length} keer` : fmtDate(g.last, g.lastTz)}</span>
           </div>
         </div>
       </button>`).join("") : `<p class="muted">Geen bieren gevonden met deze filters.</p>`;
@@ -1048,7 +1087,7 @@ async function showBeer(g, { own }) {
       <div>
         ${name ? `<p class="who">${esc(name)}</p>` : ""}
         <p>${stars(c.rating)} ${c.rating != null ? `<b>${nf(c.rating, 2)}</b>` : ""}</p>
-        <p class="muted small">${fmtDate(c.drunk_at)}${c.serving ? `, ${esc(c.serving)}` : ""}${c.location_name ? `, ${esc(c.location_name)}` : ""}</p>
+        <p class="muted small">${fmtWhen(c.drunk_at, c.tz)}${c.serving ? `, ${esc(c.serving)}` : ""}${c.location_name ? `, ${esc(c.location_name)}` : ""}</p>
         ${c.notes ? `<p style="margin-top:6px">${esc(c.notes)}</p>` : ""}
         ${state.user && c.user_id === state.user.id ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn ghost small" data-edit="${c.id}">Wijzigen</button><button class="btn danger small" data-del="${c.id}">Verwijderen</button></div>` : ""}
       </div>
@@ -1115,9 +1154,15 @@ async function showBeer(g, { own }) {
 function servingOptions(selected) {
   return ["tap", "fles", "blik", "anders"].map(s => `<label><input type="radio" name="serving" value="${s}" ${selected === s ? "checked" : ""}><span>${s[0].toUpperCase() + s.slice(1)}</span></label>`).join("");
 }
-function toLocalInput(iso) {
-  const d = new Date(iso);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+function toLocalInput(iso, tz) {
+  const p = partsIn(iso, tz);
+  const z = n => String(n).padStart(2, "0");
+  return `${p.y}-${z(p.m)}-${z(p.d)}T${z(p.h)}:${z(p.mi)}`;
+}
+function fromLocalInput(value, tz) {
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return wallToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], 0, tz || DEVICE_TZ).toISOString();
 }
 
 function editCheckin(c, beer) {
@@ -1143,7 +1188,7 @@ function editCheckin(c, beer) {
         <label class="field"><span>Locatie</span><input class="input" name="location_name" id="eLoc" value="${esc(c.location_name)}"></label>
         <div class="loc-chips"><button type="button" class="chip ${isHome(c.location_name) ? "on" : ""}" id="eHome">🏠 ${HOME_LABEL}</button></div>
       </div>
-      <label class="field"><span>Wanneer</span><input class="input" type="datetime-local" name="drunk_at" value="${toLocalInput(c.drunk_at)}"></label>
+      <label class="field"><span>Wanneer</span><input class="input" type="datetime-local" name="drunk_at" value="${toLocalInput(c.drunk_at, c.tz)}"></label>
       <label class="field"><span>Notities</span>${limitedTextarea("notes", 300, c.notes || "")}</label>
       <div>
         <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Foto</span>
@@ -1177,7 +1222,7 @@ function editCheckin(c, beer) {
         serving: f.get("serving") || null,
         location_name: isHome(f.get("location_name")) ? HOME_LABEL : (String(f.get("location_name") || "").trim() || null),
         ...(isHome(f.get("location_name")) ? { latitude: null, longitude: null } : {}),
-        drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : c.drunk_at,
+        drunk_at: f.get("drunk_at") ? (fromLocalInput(f.get("drunk_at"), c.tz) || c.drunk_at) : c.drunk_at,
         notes: clampChars(String(f.get("notes") || "").trim(), 300) || null,
       };
       if (photoFile) {
@@ -1690,6 +1735,7 @@ function renderCheckin() {
         latitude: lat ? Number(lat) : null,
         longitude: lon ? Number(lon) : null,
         drunk_at: f.get("drunk_at") ? new Date(f.get("drunk_at")).toISOString() : new Date().toISOString(),
+        tz: DEVICE_TZ,
         notes: clampChars(String(f.get("notes") || "").trim(), 300) || null,
         photo_path,
       }).select("id").single();
@@ -2024,12 +2070,12 @@ function computeBadges(checkins, extra = {}) {
   const perBeer = {}, perDayBeers = {}, perDayPlaces = {};
   const breweryImg = {};
   let prevDay = null, streak = 0, prevWeek = null, weekRun = 0, first = null;
-  const dayKey = d => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-  const weekIndex = d => Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000 + 3) / 7);
+  const dayKeyOf = (y, m, d) => { const t = new Date(Date.UTC(y, m - 1, d)); return `${t.getUTCFullYear()}-${t.getUTCMonth() + 1}-${t.getUTCDate()}`; };
 
   for (const c of sorted) {
     const iso = c.drunk_at, b = c.beer, dt = new Date(iso);
-    const h = dt.getHours(), wd = dt.getDay(), m = dt.getMonth() + 1, day = dt.getDate(), y = dt.getFullYear();
+    const lp = partsIn(iso, c.tz);   // plaatselijke tijd waar het bier gedronken is
+    const h = lp.h, wd = lp.wd, m = lp.m, day = lp.d, y = lp.y;
     const style = (b.style || "").toLowerCase();
     const abv = b.abv != null ? Number(b.abv) : null;
     const ct = normCountry(b.country);
@@ -2056,7 +2102,7 @@ function computeBadges(checkins, extra = {}) {
     if (atHome) bump("home", B.home, iso);
     const place = atHome ? "" : (c.location_name || "").trim().toLowerCase();
     if (place && !seenPlace.has(place)) { seenPlace.add(place); bump("places", B.places, iso); }
-    const dk = dayKey(dt);
+    const dk = dayKeyOf(y, m, day);
     if (place) { (perDayPlaces[dk] ||= new Set()).add(place); setCount("tour", B.tour, perDayPlaces[dk].size, iso); }
     (perDayBeers[dk] ||= new Set()).add(c.beer_id);
     setCount("tasting", B.tasting, perDayBeers[dk].size, iso);
@@ -2064,12 +2110,11 @@ function computeBadges(checkins, extra = {}) {
     setCount("loyal", B.loyal, perBeer[c.beer_id], iso);
 
     if (dk !== prevDay) {
-      const yesterday = new Date(dt); yesterday.setDate(dt.getDate() - 1);
-      streak = prevDay === dayKey(yesterday) ? streak + 1 : 1;
+      streak = prevDay === dayKeyOf(y, m, day - 1) ? streak + 1 : 1;
       prevDay = dk;
       setCount("streak", B.streak, streak, iso);
     }
-    const wk = weekIndex(dt);
+    const wk = Math.floor((Date.UTC(y, m - 1, day) / 86400000 + 3) / 7);
     if (wk !== prevWeek) { weekRun = prevWeek === wk - 1 ? weekRun + 1 : 1; prevWeek = wk; setCount("weeks", B.weeks, weekRun, iso); }
     setCount("years", B.years, Math.floor((dt - first) / (365.25 * 86400000)), iso);
 
@@ -3417,8 +3462,94 @@ async function renderUntappdImport() {
         <p class="muted small">Gebruik het bestand precies zoals je het van Untappd kreeg, zonder het eerst in Excel te openen en op te slaan. Een bestand opnieuw importeren kan geen kwaad: check-ins die er al in staan, worden overgeslagen.</p>
       </div>
       <div id="utResult"></div>
+      <div id="utUndo"></div>
     </div>`;
+  drawUntappdUndo();
   $("#utFile").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) analyzeUntappd(f); };
+}
+
+function loadTzLookup() {
+  if (typeof tzlookup === "function") return Promise.resolve(true);
+  return new Promise(res => {
+    const sc = document.createElement("script");
+    sc.src = "https://cdn.jsdelivr.net/npm/@photostructure/tz-lookup@11.6.1/tz.js";
+    sc.onload = () => res(typeof tzlookup === "function");
+    sc.onerror = () => res(false);
+    document.head.appendChild(sc);
+  });
+}
+// Tijdzone per check-in: uit de coördinaten van de locatie, en anders van de
+// dichtstbijzijnde check-in (in tijd) met een echte locatie, binnen 3 dagen
+function assignUntappdTimezones(rows, haveLookup) {
+  const naive = r => Date.parse(String(r.created_at).replace(" ", "T") + "Z");
+  const known = [];
+  for (const r of rows) {
+    r._t = naive(r.created_at);
+    const venue = (r.venue_name || "").trim();
+    const lat = parseFloat(r.venue_lat), lon = parseFloat(r.venue_lng);
+    r._tz = null;
+    if (haveLookup && venue && !/untappd at home/i.test(venue) && isFinite(lat) && isFinite(lon)) {
+      try { r._tz = tzlookup(lat, lon); } catch {}
+      if (r._tz) known.push(r);
+    }
+  }
+  known.sort((a, b) => a._t - b._t);
+  for (const r of rows) {
+    if (r._tz) continue;
+    let best = null, gap = Infinity;
+    for (const k of known) { const d = Math.abs(k._t - r._t); if (d < gap) { gap = d; best = k; } }
+    r._tz = best && gap <= 3 * 86400000 ? best._tz : DEVICE_TZ;
+  }
+  for (const r of rows) {
+    const m = String(r.created_at).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):?(\d{2})?/);
+    r._iso = m ? wallToUtc(+m[1], +m[2], +m[3], +m[4], +m[5], +(m[6] || 0), r._tz).toISOString() : new Date().toISOString();
+  }
+}
+
+async function drawUntappdUndo() {
+  const box = $("#utUndo");
+  const { count } = await sb.from("checkins").select("id", { count: "exact", head: true }).eq("user_id", state.user.id).not("untappd_checkin_id", "is", null);
+  if (!box || !count) { if (box) box.innerHTML = ""; return; }
+  box.innerHTML = `
+    <div class="panel stack">
+      <h2>Import ongedaan maken</h2>
+      <p class="muted small">Je hebt ${count} check-ins uit Untappd. Hiermee verwijder je ze allemaal, met de gekopieerde foto’s.${state.me?.is_admin ? " Nieuwe bieren die de import heeft toegevoegd en waarop verder niemand heeft ingecheckt, worden ook uit de database gehaald." : ""} Check-ins die je zelf in de app hebt gedaan, blijven staan.</p>
+      <button class="btn danger" type="button" id="utUndoBtn">Untappd-import ongedaan maken</button>
+    </div>`;
+  $("#utUndoBtn").onclick = async () => {
+    if (!confirm(`Alle ${count} check-ins uit Untappd verwijderen? Dit kan niet ongedaan worden gemaakt, maar je kunt het bestand later opnieuw importeren.`)) return;
+    const btn = $("#utUndoBtn"); btn.disabled = true; btn.textContent = "Bezig met verwijderen…";
+    try {
+      let list = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await sb.from("checkins").select("id, photo_path").eq("user_id", state.user.id).not("untappd_checkin_id", "is", null).range(from, from + 999);
+        if (error) throw error;
+        list = list.concat(data);
+        if (data.length < 1000) break;
+      }
+      const { error: delErr } = await sb.from("checkins").delete().eq("user_id", state.user.id).not("untappd_checkin_id", "is", null);
+      if (delErr) throw delErr;
+      let beersRemoved = 0;
+      if (state.me?.is_admin) {
+        const { data } = await sb.from("beers").delete().eq("source", "untappd").eq("created_by", state.user.id).select("id");
+        beersRemoved = data?.length || 0;
+      }
+      // Gekopieerde foto's opruimen, behalve als een bier ze nog als standaardfoto gebruikt
+      const own = list.map(c => c.photo_path).filter(pth => pth && pth.startsWith(state.user.id + "/"));
+      const inUse = new Set();
+      for (let i = 0; i < own.length; i += 100) {
+        const { data } = await sb.from("beers").select("image_path").in("image_path", own.slice(i, i + 100));
+        (data || []).forEach(b => inUse.add(b.image_path));
+      }
+      const remove = own.filter(pth => !inUse.has(pth));
+      for (let i = 0; i < remove.length; i += 100) await sb.storage.from("photos").remove(remove.slice(i, i + 100));
+      toast(`${list.length} check-ins verwijderd${beersRemoved ? `, en ${beersRemoved} bieren uit de database` : ""}`);
+      renderUntappdImport();
+    } catch (err) {
+      btn.disabled = false; btn.textContent = "Untappd-import ongedaan maken";
+      toast("Ongedaan maken lukte niet: " + (err.message || err));
+    }
+  };
 }
 
 async function analyzeUntappd(file) {
@@ -3442,6 +3573,10 @@ async function analyzeUntappd(file) {
     const dbT = beers.map(b => ({ b, bt: utToks(b.brewery || ""), nt: utToks(b.name) }));
 
     const todo = rows.filter(r => r.checkin_id && !done.has(String(r.checkin_id)));
+    const haveLookup = await loadTzLookup();
+    assignUntappdTimezones(todo, haveLookup);
+    const tzCount = {};
+    for (const r of todo) tzCount[r._tz] = (tzCount[r._tz] || 0) + 1;
     const groups = new Map();
     for (const r of todo) {
       if (!groups.has(r.bid)) groups.set(r.bid, { bid: r.bid, name: r.beer_name, brewery: r.brewery_name, type: r.beer_type, abv: r.beer_abv, country: r.brewery_country, rows: [] });
@@ -3473,7 +3608,9 @@ async function analyzeUntappd(file) {
             <li><b>${todo.length}</b> check-ins om te importeren${rows.length - todo.length ? ` (${rows.length - todo.length} stonden er al in)` : ""}</li>
             <li><b>${groups.size}</b> verschillende bieren, waarvan:</li>
             <li style="list-style:none;margin-left:12px">${plan.known.length + plan.sure.length} herkend in de database, ${plan.maybe.length} twijfelgevallen, ${plan.fresh.length} nieuw</li>
+            <li>Tijden zoals ze daar waren, in ${Object.keys(tzCount).length === 1 ? "één tijdzone" : Object.keys(tzCount).length + " tijdzones"}: ${Object.entries(tzCount).sort((a, b) => b[1] - a[1]).map(([z, n]) => `${esc(z.split("/").pop().replace(/_/g, " "))} (${n})`).join(", ")}</li>
           </ul>
+          ${haveLookup ? "" : `<p class="small error" style="margin-top:8px">De tijdzones konden niet worden bepaald; alle tijden worden als Nederlandse tijd opgeslagen.</p>`}
         </div>
         ${plan.maybe.length ? `
           <div class="panel stack">
@@ -3583,7 +3720,8 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
         rating: isFinite(rating) && rating > 0 ? rating : null,
         serving: untappdServing(r.serving_type),
         location_name: loc.name, latitude: loc.lat, longitude: loc.lon,
-        drunk_at: new Date(String(r.created_at).replace(" ", "T") + "Z").toISOString(),
+        drunk_at: r._iso,
+        tz: r._tz,
         notes: r.comment ? clampChars(r.comment.trim(), 300) : null,
         photo_path: photoOf.get(String(r.checkin_id)) || null,
         untappd_checkin_id: Number(r.checkin_id),
@@ -4271,7 +4409,8 @@ function renderProfile() {
 async function exportData(kind) {
   const rows = await fetchCheckins(state.user.id);
   const flat = rows.map(c => ({
-    datum: c.drunk_at,
+    datum: toLocalInput(c.drunk_at, c.tz).replace("T", " "),
+    tijdzone: c.tz || DEVICE_TZ,
     bier: c.beer?.name,
     brouwerij: c.beer?.brewery,
     stijl: c.beer?.style,
