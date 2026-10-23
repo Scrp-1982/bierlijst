@@ -268,6 +268,8 @@ textarea.input { min-height: 92px; resize: vertical; }
 .notice { background: var(--hop-soft); border-radius: var(--radius); padding: 10px 14px; margin-top: 8px; }
 fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
 fieldset.plain:disabled .input { opacity: .6; }
+.username { display: inline-block; font-size: .9rem; font-weight: 600; color: var(--hop); margin-left: 4px; }
+.username .muted { font-weight: 400; font-style: italic; }
 .user-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .user-tags .tag { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; line-height: 1.3; }
 .role-switches { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
@@ -673,7 +675,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-23.8";
+const APP_VERSION = "2026-10-23.9";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -4732,7 +4734,7 @@ async function renderAdmin() {
   const [{ data: users, error: uErr }, { data: invites }, { data: profs }] = await Promise.all([
     sb.rpc("admin_list_users"),
     sb.from("invites").select("*").order("created_at", { ascending: false }),
-    sb.from("profiles").select("id, display_name, avatar_path"),
+    sb.from("profiles").select("id, display_name, avatar_path, username"),
   ]);
   const profById = Object.fromEntries((profs || []).map(p => [p.id, p]));
   const open = (invites || []).filter(i => !i.accepted_at);
@@ -4768,7 +4770,8 @@ async function renderAdmin() {
             <div class="user-info">
               ${avatarHtml(profById[u.id] || u)}
               <div>
-                <b>${esc(u.display_name || "Naamloos")}</b>${me ? ` <span class="muted small">(jij)</span>` : ""}<br>
+                <b>${esc(u.display_name || "Naamloos")}</b>${me ? ` <span class="muted small">(jij)</span>` : ""}
+                <span class="username">${profById[u.id]?.username ? "@" + esc(profById[u.id].username) : `<span class="muted">nog geen gebruikersnaam</span>`}</span><br>
                 <span class="muted small">${esc(u.email)}</span><br>
                 <span class="small ${u.is_blocked ? "error" : "muted"}">${u.is_blocked ? "Geblokkeerd" : u.last_sign_in_at ? "Laatst ingelogd " + fmtDate(u.last_sign_in_at) : "Nog niet ingelogd"}</span>
                 ${u.has_mfa ? `<div class="user-tags"><span class="tag on">🔒 Tweestapsverificatie aan</span></div>` : u.is_admin ? `<div class="user-tags"><span class="tag warn">Tweestapsverificatie nog niet ingesteld</span></div>` : ""}
