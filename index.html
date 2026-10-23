@@ -268,6 +268,8 @@ textarea.input { min-height: 92px; resize: vertical; }
 .notice { background: var(--hop-soft); border-radius: var(--radius); padding: 10px 14px; margin-top: 8px; }
 fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 16px; }
 fieldset.plain:disabled .input { opacity: .6; }
+.user-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.user-tags .tag { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; line-height: 1.3; }
 .role-switches { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
 .review-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px; display: grid; gap: 10px; }
 .review-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
@@ -354,6 +356,9 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 .mfa-qr { margin-top: 10px; }
 .mfa-qr img { width: 200px; height: 200px; background: #fff; padding: 10px; border-radius: 12px; display: block; margin: 0 auto; }
 .mfa-secret { display: inline-block; margin-top: 4px; padding: 6px 10px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; font-size: .9rem; word-break: break-all; user-select: all; }
+.mod-row { margin-top: 10px; display: flex; justify-content: flex-end; }
+.confirm-preview { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; overflow-wrap: anywhere; }
+.choice-list { display: grid; gap: 8px; }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -528,7 +533,9 @@ section.stack > h2 + * { margin-top: 10px; }
 }
 .person:hover { border-color: var(--muted); }
 .person-link { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; text-decoration: none; color: inherit; }
-.person-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.person-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+.person { flex-wrap: wrap; }
+.person-link { min-width: 140px; }
 .people > div[data-name] { display: contents; }
 .people > div[data-name][hidden] { display: none !important; }
 .avatar {
@@ -592,6 +599,15 @@ dialog.lightbox img {
   dialog[open] { animation: rise .22s ease-out; }
   @keyframes rise { from { transform: translateY(24px); opacity: 0; } }
 }
+
+/* Gebruikersrij bij Beheer: op een telefoon de vinkjes onder de naam */
+div.user-row { grid-template-columns: minmax(0, 1fr); }
+div.user-row .user-info > div { overflow-wrap: break-word; word-break: normal; min-width: 0; }
+div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-start; }
+@media (min-width: 560px) {
+  div.user-row { grid-template-columns: minmax(0, 1fr) auto; }
+  div.user-row .role-switches { flex-direction: column; align-items: flex-end; gap: 6px; }
+}
 </style>
 </head>
 <body>
@@ -607,7 +623,7 @@ dialog.lightbox img {
         </svg>
       </button>
     </div>
-    <a class="brand" href="#lijst" id="brand">
+    <a class="brand" href="#activiteit" id="brand">
       <svg viewBox="0 0 22 26" aria-hidden="true"><path d="M2 3h18l-2 21H4z" fill="var(--gold)"/><path d="M2 3h18l-.5 5H2.5z" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><path d="M2 3h18l-2 21H4z" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/></svg>
       Bierlijst
     </a>
@@ -654,7 +670,7 @@ dialog.lightbox img {
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-23.4";
+const APP_VERSION = "2026-10-23.6";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -845,6 +861,27 @@ function openDialog(html) {
 }
 function closeDialog() { $("#dlg").close(); }
 $("#dlgClose").addEventListener("click", closeDialog);
+
+// Extra bevestiging voordat iets definitief wordt verwijderd
+function confirmDelete(title, previewHtml, label = "Ja, definitief verwijderen") {
+  return new Promise(resolve => {
+    openDialog(`
+      <div class="stack">
+        <h2>${title}</h2>
+        ${previewHtml ? `<div class="confirm-preview">${previewHtml}</div>` : ""}
+        <p class="muted small">Dit kan niet ongedaan worden gemaakt.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn danger" type="button" id="cdYes">${label}</button>
+          <button class="btn ghost" type="button" id="cdNo">Annuleren</button>
+        </div>
+      </div>`);
+    let done = false;
+    const finish = v => { if (done) return; done = true; closeDialog(); resolve(v); };
+    $("#cdYes").onclick = () => finish(true);
+    $("#cdNo").onclick = () => finish(false);
+    $("#dlg").addEventListener("close", () => finish(false), { once: true });
+  });
+}
 
 // Fotoviewer: foto groot bekijken in het huidige venster
 function openLightbox(url) {
@@ -4295,7 +4332,7 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
-const feedState = { items: [], done: false, ids: [], scope: (() => { try { return localStorage.getItem("feedScope") || "all"; } catch { return "all"; } })() };
+const feedState = { items: [], done: false, ids: [], scope: "friends" };
 
 function relTime(iso) {
   const rtf = new Intl.RelativeTimeFormat("nl", { numeric: "auto" });
@@ -4309,7 +4346,7 @@ async function fetchFeed(from) {
   let q = sb
     .from("checkins")
     .select("*, beer:beers(*), profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles!comments_user_id_fkey(id, display_name, avatar_path)), cheers(user_id, profile:profiles!cheers_user_id_fkey(id, display_name))");
-  if (feedState.scope === "friends") q = q.in("user_id", feedState.ids);
+  if (!(feedState.scope === "all" && state.me?.is_admin)) q = q.in("user_id", feedState.ids);
   const { data, error } = await q
     .order("drunk_at", { ascending: false })
     .order("id", { ascending: false })
@@ -4337,6 +4374,7 @@ function postHtml(c) {
       ${c.notes ? `<p class="post-notes">${esc(c.notes)}</p>` : ""}
       ${c.photo_path ? `<button type="button" class="post-photo zoomable" data-zoom="${esc(photoUrl(c.photo_path))}" aria-label="Foto groot bekijken"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto van ${esc(b.name || "het bier")}" loading="lazy"></button>` : ""}
       ${cheerHtml(c, mine)}
+      ${state.me?.is_admin && !mine ? `<div class="mod-row"><button type="button" class="btn ghost small" data-moderate="${c.id}">Beheer</button></div>` : ""}
       <div class="comments">
         ${(c.comments || []).map(cm => `
           <div class="comment">
@@ -4378,6 +4416,48 @@ function cheerHtml(c, mine) {
     </div>`;
 }
 
+// Beheerder: foto, notitie of hele check-in van iemand anders verwijderen
+function moderatePost(c) {
+  if (!c || !state.me?.is_admin) return;
+  const who = esc(c.profile?.display_name || "Iemand"), beer = esc(c.beer?.name || "een bier");
+  openDialog(`
+    <div class="stack">
+      <h2>Check-in modereren</h2>
+      <p>${who} dronk <b>${beer}</b>, ${relTime(c.drunk_at)}.</p>
+      <div class="choice-list">
+        ${c.photo_path ? `<button type="button" class="btn ghost block" data-mod="photo">Alleen de foto verwijderen</button>` : ""}
+        ${c.notes ? `<button type="button" class="btn ghost block" data-mod="notes">Alleen de notitie verwijderen</button>` : ""}
+        <button type="button" class="btn danger block" data-mod="all">Hele check-in verwijderen</button>
+      </div>
+    </div>`);
+  $("#dlgBody").onclick = async e => {
+    const b = e.target.closest("[data-mod]");
+    if (!b) return;
+    const kind = b.dataset.mod;
+    const preview = kind === "photo" ? `<img src="${esc(photoUrl(c.photo_path))}" alt="" style="max-height:220px;border-radius:10px">`
+      : kind === "notes" ? `<p>“${esc(c.notes)}”</p>`
+      : `<p>${who} dronk <b>${beer}</b>. Ook de foto, reacties en proosts bij deze check-in verdwijnen.</p>`;
+    const title = kind === "photo" ? "Deze foto verwijderen?" : kind === "notes" ? "Deze notitie verwijderen?" : "Deze check-in verwijderen?";
+    if (!(await confirmDelete(title, preview))) return;
+    let error;
+    if (kind === "all") ({ error } = await sb.from("checkins").delete().eq("id", c.id));
+    else ({ error } = await sb.from("checkins").update(kind === "photo" ? { photo_path: null } : { notes: null }).eq("id", c.id));
+    if (error) return toast("Dat lukte niet: " + error.message);
+    // Eigen opgeslagen foto opruimen (niet als een bier hem als standaardfoto gebruikt)
+    if ((kind === "photo" || kind === "all") && c.photo_path && !/^https?:/.test(c.photo_path) && c.photo_path !== c.beer?.image_path) {
+      await sb.storage.from("photos").remove([c.photo_path]);
+    }
+    if (kind === "all") {
+      feedState.items = feedState.items.filter(x => x.id !== c.id);
+      document.querySelector(`[data-post="${c.id}"]`)?.remove();
+    } else {
+      if (kind === "photo") c.photo_path = null; else c.notes = null;
+      rerenderPost(c.id);
+    }
+    toast(kind === "all" ? "Check-in verwijderd" : kind === "photo" ? "Foto verwijderd" : "Notitie verwijderd");
+  };
+}
+
 function rerenderPost(id) {
   const c = feedState.items.find(x => x.id === id);
   const el = document.querySelector(`[data-post="${id}"]`);
@@ -4398,21 +4478,18 @@ async function renderFeed() {
   view().innerHTML = `
     <div class="stack">
       <h1>Activiteit</h1>
-      <div class="auth-tabs" role="tablist" style="max-width:320px">
-        <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Iedereen</button>
-        <button role="tab" type="button" data-scope="friends" aria-selected="${feedState.scope === "friends"}">Vrienden</button>
-      </div>
-      <p class="muted">${feedState.scope === "all" ? "Alle check-ins van iedereen, de nieuwste bovenaan." : `Jij en ${feedState.ids.length - 1} ${feedState.ids.length - 1 === 1 ? "vriend" : "vrienden"}`}</p>
+      ${state.me?.is_admin ? `
+      <div class="auth-tabs" role="tablist" style="max-width:380px">
+        <button role="tab" type="button" data-scope="friends" aria-selected="${feedState.scope !== "all"}">Vrienden</button>
+        <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Alle gebruikers (beheer)</button>
+      </div>` : ""}
+      <p class="muted">${feedState.scope === "all" && state.me?.is_admin ? "Alle check-ins van alle gebruikers, om te modereren. Alleen beheerders zien dit." : `Jij en ${feedState.ids.length - 1} ${feedState.ids.length - 1 === 1 ? "vriend" : "vrienden"}, de nieuwste bovenaan.`}</p>
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
         <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
-      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">${feedState.scope === "all" ? "Nog niemand heeft iets ingecheckt." : "Hier zie je je eigen check-ins en die van je vrienden."}</p><p style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="#inchecken">Bier inchecken</a><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
+      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden.</p><p style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="#inchecken">Bier inchecken</a><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
     </div>`;
 
-  view().querySelectorAll("[data-scope]").forEach(b => b.onclick = () => {
-    feedState.scope = b.dataset.scope;
-    try { localStorage.setItem("feedScope", feedState.scope); } catch {}
-    renderFeed();
-  });
+  view().querySelectorAll("[data-scope]").forEach(b => b.onclick = () => { feedState.scope = b.dataset.scope; renderFeed(); });
   const more = $("#moreBtn");
   if (more) more.onclick = async () => {
     more.disabled = true;
@@ -4484,9 +4561,14 @@ async function renderFeed() {
       if (c?.beer) showBeer({ beer: c.beer, checkins: [c], avg: c.rating, photo: c.photo_path || c.beer.image_path }, { own: c.user_id === state.user.id });
       return;
     }
+    const mod = e.target.closest("[data-moderate]");
+    if (mod) return moderatePost(feedState.items.find(x => x.id === mod.dataset.moderate));
     const del = e.target.closest("[data-delcomment]");
     if (del) {
-      if (!confirm("Deze reactie verwijderen?")) return;
+      const cm = feedState.items.flatMap(x => x.comments || []).find(x => x.id === del.dataset.delcomment);
+      const ok = await confirmDelete("Reactie verwijderen?",
+        `<p><b>${esc(cm?.profile?.display_name || "Iemand")}</b>: ${esc(cm?.body || "")}</p>`);
+      if (!ok) return;
       const { error } = await sb.from("comments").delete().eq("id", del.dataset.delcomment);
       if (error) return toast("Verwijderen lukte niet: " + error.message);
       const post = feedState.items.find(x => (x.comments || []).some(cm => cm.id === del.dataset.delcomment));
@@ -4522,10 +4604,14 @@ async function renderFriends() {
   try {
     const [fr, { data: ppl }, { data: cks }] = await Promise.all([
       fetchFriendships(),
-      sb.from("profiles").select("id, display_name, avatar_path").neq("id", state.user.id).order("display_name"),
+      Promise.resolve({ data: [] }),
       sb.from("checkins").select("user_id, beer_id"),
     ]);
-    rows = fr; people = ppl || [];
+    rows = fr;
+    // Alleen mensen met wie je een vriendschap of verzoek hebt
+    const seenP = new Map();
+    for (const r of fr) { const p = r.requester === state.user.id ? r.adr : r.req; if (p) seenP.set(p.id, p); }
+    people = [...seenP.values()].sort((a, b) => (a.display_name || "").localeCompare(b.display_name || "", "nl"));
     counts = {};
     for (const r of cks || []) (counts[r.user_id] ||= new Set()).add(r.beer_id);
   } catch (err) {
@@ -4541,7 +4627,7 @@ async function renderFriends() {
   const byRel = rel => people.filter(p => relation[p.id] === rel);
   const friends = byRel("friend"), received = byRel("received"), sent = byRel("sent");
   const others = people.filter(p => !relation[p.id]);
-  const uniq = id => `${counts[id]?.size || 0} unieke bieren`;
+  const uniq = id => counts[id] ? `${counts[id].size} unieke bieren` : (relation[id] === "friend" ? "0 unieke bieren" : "");
 
   const row = (p, actions, link) => `
     <div class="person">
@@ -4578,18 +4664,29 @@ async function renderFriends() {
         </section>` : ""}
 
       <section class="stack">
-        <h2>Andere leden</h2>
-        ${others.length ? `
-          <input class="input" type="search" id="memberFilter" placeholder="Zoek een lid op naam" aria-label="Lid zoeken">
-          <div class="people" id="memberList">${others.map(p => `<div data-name="${esc((p.display_name || "").toLowerCase())}">${row(p, `<button class="btn soft small" data-request="${p.id}">Vriend toevoegen</button>`)}</div>`).join("")}</div>`
-        : `<p class="muted">Er zijn geen andere leden die je nog kunt toevoegen.</p>`}
+        <h2>Vriend toevoegen</h2>
+        <p class="muted small">Typ de gebruikersnaam van je vriend precies. Je vriend moet het verzoek daarna zelf goedkeuren. Jouw eigen gebruikersnaam is <b>@${esc(state.me?.username || "")}</b>; geef die aan vrienden die jou willen toevoegen.</p>
+        <form class="type-code" id="findForm">
+          <input class="input" id="findQ" placeholder="@gebruikersnaam" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Gebruikersnaam">
+          <button class="btn" type="submit">Zoeken</button>
+        </form>
+        <div class="people" id="findResults"></div>
       </section>
     </div>`;
 
-  const filter = $("#memberFilter");
-  if (filter) filter.oninput = () => {
-    const q = filter.value.trim().toLowerCase();
-    document.querySelectorAll("#memberList > [data-name]").forEach(el => el.hidden = q && !el.dataset.name.includes(q));
+  $("#findForm").onsubmit = async e => {
+    e.preventDefault();
+    const q = $("#findQ").value.trim();
+    const box = $("#findResults");
+    if (q.replace(/^@/, "").length < 3) { box.innerHTML = `<p class="muted small">Typ minstens 3 tekens.</p>`; return; }
+    box.innerHTML = `<p class="muted small">Zoeken…</p>`;
+    const { data, error } = await sb.rpc("find_users", { q });
+    if (error) { box.innerHTML = `<p class="error small">${esc(error.message)}</p>`; return; }
+    const found = (data || []).filter(p => !relation[p.id]);
+    const known = (data || []).filter(p => relation[p.id]);
+    box.innerHTML = found.map(p => row(p, `<button class="btn soft small" data-request="${p.id}">Vriend toevoegen</button>`)).join("")
+      + (known.length ? `<p class="muted small">${known.map(p => esc(p.display_name)).join(", ")} ${known.length === 1 ? "staat" : "staan"} al hierboven.</p>` : "")
+      || `<p class="muted small">Niemand gevonden met precies deze gebruikersnaam. Vraag je vriend om zijn gebruikersnaam; die staat bij hem onder Vrienden.</p>`;
   };
 
   view().onclick = async e => {
@@ -4672,7 +4769,7 @@ async function renderAdmin() {
                 <b>${esc(u.display_name || "Naamloos")}</b>${me ? ` <span class="muted small">(jij)</span>` : ""}<br>
                 <span class="muted small">${esc(u.email)}</span><br>
                 <span class="small ${u.is_blocked ? "error" : "muted"}">${u.is_blocked ? "Geblokkeerd" : u.last_sign_in_at ? "Laatst ingelogd " + fmtDate(u.last_sign_in_at) : "Nog niet ingelogd"}</span>
-                ${u.has_mfa ? `<br><span class="tag on">🔒 Tweestapsverificatie aan</span>` : u.is_admin ? `<br><span class="tag warn">Tweestapsverificatie nog niet ingesteld</span>` : ""}
+                ${u.has_mfa ? `<div class="user-tags"><span class="tag on">🔒 Tweestapsverificatie aan</span></div>` : u.is_admin ? `<div class="user-tags"><span class="tag warn">Tweestapsverificatie nog niet ingesteld</span></div>` : ""}
               </div>
             </div>
             <div class="role-switches">
@@ -4945,6 +5042,40 @@ function bindPasswordForm(forced) {
     if (forced) { location.hash = "lijst"; route(); } else e.target.reset(), (btn.disabled = false);
   };
 }
+function usernameProblem(u) {
+  if (!u) return "Kies een gebruikersnaam.";
+  if (!/^[a-z0-9_]{3,30}$/.test(u)) return "Alleen kleine letters, cijfers en _, van 3 tot 30 tekens.";
+  return null;
+}
+function renderUsernameSetup() {
+  setTab(null); setNav(false);
+  const suggestion = String(state.me?.display_name || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30);
+  view().innerHTML = `
+    <form class="auth stack" id="unForm">
+      <h1>Kies je gebruikersnaam</h1>
+      <p class="muted">Met je gebruikersnaam kunnen vrienden je vinden en toevoegen. Hij is uniek: niemand anders kan dezelfde kiezen.</p>
+      <label class="field"><span>Gebruikersnaam</span>
+        <input class="input" name="username" value="${esc(suggestion.length >= 3 ? suggestion : "")}" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="bijv. mike_bier" required></label>
+      <p class="muted small">Kleine letters, cijfers en _, van 3 tot 30 tekens.</p>
+      <p class="error" id="unErr" hidden></p>
+      <button class="btn block" type="submit">Opslaan</button>
+      <button class="btn ghost block" type="button" id="unLogout">Uitloggen</button>
+    </form>`;
+  $("#unLogout").onclick = () => sb.auth.signOut();
+  $("#unForm").onsubmit = async e => {
+    e.preventDefault();
+    const u = String(new FormData(e.target).get("username") || "").trim().toLowerCase().replace(/^@/, "");
+    const err = $("#unErr"); err.hidden = true;
+    const prob = usernameProblem(u);
+    if (prob) { err.textContent = prob; err.hidden = false; return; }
+    const { data, error } = await sb.from("profiles").update({ username: u }).eq("id", state.user.id).select().single();
+    if (error) { err.textContent = error.code === "23505" ? "Deze gebruikersnaam is al bezet. Kies een andere." : "Opslaan lukte niet: " + error.message; err.hidden = false; return; }
+    state.me = data;
+    toast(`Je gebruikersnaam is @${u}`);
+    route();
+  };
+}
+
 function renderForcedPassword() {
   setTab(null);
   setNav(false);
@@ -4991,8 +5122,8 @@ function renderProfile() {
       ${fold("gegevens", "Profielgegevens", "Naam, gebruikersnaam, over jou en je openbare lijst", `
         <form class="stack" id="profileForm">
           <label class="field"><span>Naam</span><input class="input" name="display_name" value="${esc(p.display_name)}" required></label>
-          <label class="field"><span>Gebruikersnaam</span><input class="input" name="username" value="${esc(p.username)}" placeholder="bijv. mike_bier" pattern="[a-z0-9_]{3,30}" autocapitalize="off"></label>
-          <p class="muted small">Kleine letters, cijfers en _, 3 tot 30 tekens. Nodig voor je openbare link.</p>
+          <label class="field"><span>Gebruikersnaam</span><input class="input" name="username" value="${esc(p.username)}" placeholder="bijv. mike_bier" pattern="[a-z0-9_]{3,30}" autocapitalize="off" required></label>
+          <p class="muted small">Uniek; hiermee vinden vrienden je. Kleine letters, cijfers en _, 3 tot 30 tekens.</p>
           <label class="field"><span>Over jou</span><textarea class="input" name="bio" maxlength="500" placeholder="Favoriete stijl, vaste kroeg…">${esc(p.bio)}</textarea></label>
           <label class="switch">
             <span><b>Openbare lijst</b><br><span class="muted small">Iedereen met de link kan je bieren zien, ook zonder account.</span></span>
@@ -5038,8 +5169,8 @@ function renderProfile() {
   $("#profileForm").onsubmit = async e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    const username = String(f.get("username") || "").trim().toLowerCase() || null;
-    if (username && !/^[a-z0-9_]{3,30}$/.test(username)) return toast("Gebruikersnaam: alleen kleine letters, cijfers en _, 3 tot 30 tekens.");
+    const username = String(f.get("username") || "").trim().toLowerCase().replace(/^@/, "");
+    if (usernameProblem(username)) return toast("Gebruikersnaam: " + usernameProblem(username).toLowerCase());
     const update = {
       display_name: String(f.get("display_name")).trim(),
       username,
@@ -5149,8 +5280,9 @@ async function route() {
   if (!state.user) return renderAuth();
   if (await mfaGate()) return;
   if (state.me?.must_change_password) return renderForcedPassword();
+  if (state.me && !state.me.username) return renderUsernameSetup();
   setNav(true);
-  const h = location.hash.slice(1) || "lijst";
+  const h = location.hash.slice(1) || "activiteit";
   if (h === "inchecken") return renderCheckin();
   if (h === "vrienden") return renderFriends();
   if (h === "tweestap") return renderMfaSetup(false);
@@ -5166,7 +5298,8 @@ async function route() {
   if (h === "profiel") return renderProfile();
   if (h === "beheer") return renderAdmin();
   if (h.startsWith("u/")) return renderUser(h.slice(2));
-  return renderMine();
+  if (h === "lijst") return renderMine();
+  return renderFeed();
 }
 window.addEventListener("hashchange", route);
 
