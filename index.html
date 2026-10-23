@@ -359,6 +359,9 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 .mod-row { margin-top: 10px; display: flex; justify-content: flex-end; }
 .confirm-preview { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; overflow-wrap: anywhere; }
 .choice-list { display: grid; gap: 8px; }
+/* Tabbladen Vrienden en Beheer: volle breedte zoals eerst, maar minder hoog */
+.auth-tabs.small-tabs { max-width: 380px; padding: 3px; }
+.auth-tabs.small-tabs button { min-height: 30px; padding: 2px 10px; font-size: .9rem; line-height: 1.2; }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -670,7 +673,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-23.6";
+const APP_VERSION = "2026-10-23.8";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -4479,11 +4482,10 @@ async function renderFeed() {
     <div class="stack">
       <h1>Activiteit</h1>
       ${state.me?.is_admin ? `
-      <div class="auth-tabs" role="tablist" style="max-width:380px">
+      <div class="auth-tabs small-tabs" role="tablist">
         <button role="tab" type="button" data-scope="friends" aria-selected="${feedState.scope !== "all"}">Vrienden</button>
-        <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Alle gebruikers (beheer)</button>
+        <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Beheer</button>
       </div>` : ""}
-      <p class="muted">${feedState.scope === "all" && state.me?.is_admin ? "Alle check-ins van alle gebruikers, om te modereren. Alleen beheerders zien dit." : `Jij en ${feedState.ids.length - 1} ${feedState.ids.length - 1 === 1 ? "vriend" : "vrienden"}, de nieuwste bovenaan.`}</p>
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
         <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
       : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden.</p><p style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="#inchecken">Bier inchecken</a><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
