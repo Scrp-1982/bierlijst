@@ -384,6 +384,21 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 .process-detail img { width: 140px; height: 140px; object-fit: cover; border-radius: 12px; }
 .process-results { display: grid; gap: 6px; margin-top: 10px; max-height: 52vh; overflow-y: auto; }
 .pick-row.on { border-color: var(--hop); background: var(--hop-soft); box-shadow: 0 0 0 2px var(--hop) inset; }
+/* Verzamelbak op een telefoon: alles onder elkaar, knoppen onderaan in beeld */
+@media (max-width: 999px) {
+  .process-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .process-left { position: static; max-height: 260px; }
+  .process-right { scroll-margin-top: 70px; }
+  #pDetail { scroll-margin-top: 80px; }
+  .process-detail img { width: 96px; height: 96px; }
+  .process-detail h2 { font-size: 1.2rem; overflow-wrap: anywhere; }
+  .process-results { max-height: none; }
+  div.process-bar { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 10px; gap: 6px; }
+  div.process-bar #pChosen { flex: 0 0 100%; min-width: 0; font-size: .85rem; }
+  div.process-bar .btn { flex: 1 1 auto; min-width: 0; min-height: 40px; padding: 0 10px; font-size: .84rem; white-space: nowrap; }
+  .lbl-long { display: none; }
+}
+@media (min-width: 1000px) { .lbl-short { display: none; } }
 .edit-block { border-top: 1px solid var(--line); padding-top: 14px; }
 .photo-compare { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; background: var(--paper); border-radius: var(--radius); padding: 12px; }
 .photo-compare figure { margin: 0; text-align: center; }
@@ -709,7 +724,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-24.2";
+const APP_VERSION = "2026-10-24.4";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -4553,19 +4568,6 @@ function firstWords(note) { return String(note || "").split(/\s+/).filter(Boolea
 async function renderProcess() {
   setTab("controleren");
   if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
-  if (!isDesktop()) {
-    const counts = await reviewCounts();
-    view().innerHTML = `
-      <div class="stack">
-        <h1>Controleren</h1>
-        ${reviewTabs("inbox", counts)}
-        <div class="panel empty">
-          <h2>Alleen op een computer</h2>
-          <p class="muted">De verzamelbak verwerk je op een computer met een groot scherm, zodat je links de barcodes en rechts de database naast elkaar ziet.${counts.inbox ? ` Er ${counts.inbox === 1 ? "wacht" : "wachten"} nu ${counts.inbox} ${counts.inbox === 1 ? "barcode" : "barcodes"}.` : ""}</p>
-        </div>
-      </div>`;
-    return;
-  }
   view().classList.add("wide");
   view().innerHTML = `<div class="loading">Verzamelbak ophalen…</div>`;
   let items;
@@ -4578,7 +4580,7 @@ async function renderProcess() {
       <div class="stack">
         <h1>Controleren</h1>
         ${reviewTabs("inbox", { inbox: items.length })}
-        <p class="muted">Kies links een barcode, zoek rechts het bier in de database, en voeg samen of voeg toe als nieuw bier.</p>
+        <p class="muted">Kies een barcode, zoek het bier in de database, en voeg samen of voeg toe als nieuw bier.</p>
       </div>
       <div class="process-grid">
         <aside class="panel process-left">
@@ -4597,9 +4599,9 @@ async function renderProcess() {
       </div>
       <div class="process-bar" id="pBar" hidden>
         <span class="muted small" id="pChosen">Geen bier geselecteerd</span>
-        <button class="btn" type="button" id="pMerge" disabled>Samenvoegen met geselecteerd bier</button>
-        <button class="btn soft" type="button" id="pAdd">Als nieuw bier toevoegen</button>
-        <button class="btn danger" type="button" id="pDel">Verwijderen uit verzamelbak</button>
+        <button class="btn" type="button" id="pMerge" disabled><span class="lbl-long">Samenvoegen met geselecteerd bier</span><span class="lbl-short">Samenvoegen</span></button>
+        <button class="btn soft" type="button" id="pAdd"><span class="lbl-long">Als nieuw bier toevoegen</span><span class="lbl-short">Nieuw bier</span></button>
+        <button class="btn danger" type="button" id="pDel"><span class="lbl-long">Verwijderen uit verzamelbak</span><span class="lbl-short">Verwijderen</span></button>
       </div>
     </div>`;
 
@@ -4714,7 +4716,12 @@ async function renderProcess() {
       if (current.note) search(); else $("#pResults").innerHTML = "";
     }
   };
-  $("#pList").onclick = e => { const b = e.target.closest("[data-item]"); if (b) select(b.dataset.item); };
+  $("#pList").onclick = e => {
+    const b = e.target.closest("[data-item]");
+    if (!b) return;
+    select(b.dataset.item);
+    if (!isDesktop()) $("#pDetail").scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const done = async (msg, photoInUse) => {
     await deleteInboxItem(current, photoInUse);
