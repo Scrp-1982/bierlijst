@@ -364,6 +364,30 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 /* Tabbladen Vrienden en Beheer: volle breedte zoals eerst, maar minder hoog */
 .auth-tabs.small-tabs { max-width: 380px; padding: 3px; }
 .auth-tabs.small-tabs button { min-height: 30px; padding: 2px 10px; font-size: .9rem; line-height: 1.2; }
+.req { font: 600 .75rem var(--body); color: #fff; background: var(--hop); border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
+.col-code { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.ok { color: var(--hop); font-weight: 600; }
+#view.wrap.wide { max-width: 1280px; }
+.process-grid { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 16px; align-items: start; }
+.process-left { position: sticky; top: 76px; max-height: calc(100vh - 170px); overflow-y: auto; }
+.process-list { display: grid; gap: 6px; margin-top: 10px; }
+.process-item {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: center; width: 100%; text-align: left;
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 6px; cursor: pointer; color: inherit;
+}
+.process-item img, .process-item .ph { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; display: grid; place-items: center; background: var(--paper); }
+.process-item .ph svg { width: 24px; }
+.process-item.on { border-color: var(--hop); background: var(--hop-soft); }
+.process-detail { display: flex; gap: 16px; align-items: flex-start; }
+.process-detail img { width: 140px; height: 140px; object-fit: cover; border-radius: 12px; }
+.process-results { display: grid; gap: 6px; margin-top: 10px; max-height: 52vh; overflow-y: auto; }
+.pick-row.on { border-color: var(--hop); background: var(--hop-soft); box-shadow: 0 0 0 2px var(--hop) inset; }
+.process-bar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 12px 16px;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, .06);
+}
+.process-bar #pChosen { flex: 1; min-width: 200px; }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -644,6 +668,8 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
   <a href="#lijst" data-tab="lijst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>Mijn bieren</a>
   <a href="#activiteit" data-tab="activiteit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Activiteit</a>
   <a href="#inchecken" data-tab="inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Inchecken</a>
+  <a href="#verzamel" data-tab="verzamel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Snel scannen</a>
+  <a href="#verwerken" data-tab="verwerken" id="processLink" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v6H4zM4 14h16v6H4z"/><path d="M8 7h.01M8 17h.01"/></svg>Verzamelbak</a>
   <a href="#database" data-tab="database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Bierdatabase</a>
   <a href="#badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>Badges</a>
   <a href="#vrienden" data-tab="vrienden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg>Vrienden</a>
@@ -676,7 +702,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-23.10";
+const APP_VERSION = "2026-10-23.12";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -842,6 +868,7 @@ function setNav(loggedIn) {
   $("#menuBtn").hidden = !loggedIn;
   if (!loggedIn) closeMenu();
   $("#adminGroup").hidden = !state.me?.is_admin;
+  $("#processLink").hidden = !isDesktop();
   if (loggedIn && state.me?.is_admin) updateReviewCount();
   $("#topRight").innerHTML = loggedIn ? `
     <a class="icon-btn add" href="#inchecken" aria-label="Bier inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></a>` : "";
@@ -4340,6 +4367,358 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
 }
 
 // ---------------------------------------------------------------------
+// Verzamelbak: snel scannen op de telefoon, later verwerken op de pc
+// ---------------------------------------------------------------------
+const isDesktop = () => matchMedia("(min-width: 1000px) and (pointer: fine)").matches;
+
+async function fetchInbox() {
+  const { data, error } = await sb.from("scan_inbox").select("*").order("created_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+async function renderCollect() {
+  setTab("verzamel");
+  let photoFile = null, code = null;
+  view().innerHTML = `
+    <div class="stack">
+      <div>
+        <h1>Snel scannen</h1>
+        <p class="muted">Scan een barcode, voeg eventueel een foto en omschrijving toe, en bewaar. Later verwerk je alles op de computer via <b>Verzamelbak</b>.</p>
+      </div>
+      <form class="panel stack" id="collectForm" novalidate>
+        <h2>Barcode <span class="req">verplicht</span></h2>
+        ${barcodeToolsHtml()}
+        <div class="type-code">
+          <input class="input" id="colCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode">
+          <button class="btn ghost" type="button" id="colCodeBtn">Gebruiken</button>
+        </div>
+        <div id="colCodeBox" class="col-code" hidden></div>
+
+        <h2 style="margin-top:6px">Foto <span class="muted small" style="font-weight:400">optioneel</span></h2>
+        <div class="photo-pick">
+          <img id="colPhotoPreview" alt="" hidden>
+          <label class="btn soft small" style="cursor:pointer">
+            <input type="file" accept="image/*" capture="environment" id="colPhoto" hidden>
+            Foto van het bier maken
+          </label>
+        </div>
+
+        <label class="field"><span>Omschrijving <span class="muted small" style="font-weight:400">optioneel</span></span>
+          ${limitedTextarea("note", 300, "", 'placeholder="Bijv. naam op het etiket, winkel, prijs…"')}
+        </label>
+        <p class="error" id="colErr" hidden></p>
+        <button class="btn block" type="submit" id="colSave">Bewaren en volgende</button>
+      </form>
+      <section class="stack">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+          <h2>In je verzamelbak</h2>
+          <span class="muted small" id="colCount"></span>
+        </div>
+        <div class="db-list" id="colList"><p class="muted small">Ophalen…</p></div>
+      </section>
+    </div>`;
+
+  const setCode = async c => {
+    code = c;
+    const box = $("#colCodeBox");
+    box.hidden = false;
+    box.innerHTML = `<b>${esc(c)}</b> <span class="muted small">opzoeken…</span>`;
+    const known = await findBeerByCode(c);
+    if (code !== c) return;
+    box.innerHTML = known
+      ? `<b>${esc(c)}</b><br><span class="small">Staat al in de database: <b>${esc(known.name)}</b>${known.brewery ? `, ${esc(known.brewery)}` : ""}. Bewaren is alleen nodig als je er bijvoorbeeld een foto bij wilt doen.</span>`
+      : `<b>${esc(c)}</b><br><span class="small ok">Nieuw: nog niet bekend in de database.</span>`;
+  };
+  const onCode = async c => { await stopScanner(); await setCode(c); };
+  $("#scanBtn").onclick = () => startScan(onCode);
+  bindBarcodePhoto(onCode);
+  const typed = () => {
+    const c = cleanBarcode($("#colCode").value);
+    if (!validBarcode(c)) return toast("Deze barcode klopt niet. Controleer de cijfers onder de streepjes.");
+    $("#colCode").value = "";
+    setCode(c);
+  };
+  $("#colCodeBtn").onclick = typed;
+  $("#colCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); typed(); } };
+  $("#colPhoto").onchange = e => {
+    photoFile = e.target.files[0] || null;
+    if (photoFile) { const img = $("#colPhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
+  };
+
+  const drawList = async () => {
+    try {
+      const items = await fetchInbox();
+      $("#colCount").textContent = `${items.length} ${items.length === 1 ? "barcode" : "barcodes"}`;
+      $("#colList").innerHTML = items.length ? items.slice().reverse().map(it => `
+        <div class="bc-row">
+          ${it.photo_path ? `<div class="beer-photo"><img src="${esc(photoUrl(it.photo_path))}" alt="" loading="lazy"></div>` : `<div class="beer-photo">${glassSvg("var(--line)")}</div>`}
+          <span class="db-body"><b>${esc(it.code)}</b><span class="muted small">${esc(it.note || "Geen omschrijving")}</span></span>
+          <button class="btn ghost small" type="button" data-coldel="${it.id}">Verwijderen</button>
+        </div>`).join("") : `<p class="muted small">Nog leeg.</p>`;
+      $("#colList").onclick = async e => {
+        const d = e.target.closest("[data-coldel]");
+        if (!d) return;
+        const it = items.find(x => x.id === d.dataset.coldel);
+        if (!(await confirmDelete("Uit je verzamelbak verwijderen?", `<p><b>${esc(it.code)}</b>${it.note ? `<br>${esc(it.note)}` : ""}</p>`))) return;
+        await deleteInboxItem(it, false);
+        drawList();
+      };
+    } catch (err) {
+      $("#colList").innerHTML = `<p class="error small">Laden lukte niet: ${esc(err.message)}</p>`;
+    }
+  };
+  drawList();
+
+  $("#collectForm").onsubmit = async e => {
+    e.preventDefault();
+    const err = $("#colErr"); err.hidden = true;
+    if (!code) { err.textContent = "Scan of typ eerst een barcode. Die is verplicht."; err.hidden = false; return; }
+    const btn = $("#colSave"); btn.disabled = true; btn.textContent = "Bewaren…";
+    try {
+      const photo_path = photoFile ? await uploadPhoto(photoFile) : null;
+      const note = clampChars(String(new FormData(e.target).get("note") || "").trim(), 300) || null;
+      const { error } = await sb.from("scan_inbox").insert({ code, photo_path, note });
+      if (error) throw error;
+      toast(`Barcode ${code} bewaard`);
+      if (navigator.vibrate) navigator.vibrate(40);
+      // Klaar voor de volgende
+      code = null; photoFile = null;
+      e.target.reset();
+      $("#colCodeBox").hidden = true;
+      $("#colPhotoPreview").hidden = true;
+      e.target.querySelector(".char-count").textContent = "0 / 300";
+      drawList();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (ex) {
+      err.textContent = "Bewaren lukte niet: " + (ex.message || ex); err.hidden = false;
+    } finally {
+      btn.disabled = false; btn.textContent = "Bewaren en volgende";
+    }
+  };
+}
+
+// Verwijderen uit de verzamelbak; de foto alleen opruimen als die niet bij een bier in gebruik is
+async function deleteInboxItem(it, photoInUse) {
+  await sb.from("scan_inbox").delete().eq("id", it.id);
+  if (it.photo_path && !photoInUse && it.photo_path.startsWith(state.user.id + "/")) {
+    await sb.storage.from("photos").remove([it.photo_path]);
+  }
+}
+
+// Eerste twee woorden van een omschrijving als zoekterm ("Grolsch Kanon in het schap" → "Grolsch Kanon")
+function firstWords(note) { return String(note || "").split(/\s+/).filter(Boolean).slice(0, 2).join(" "); }
+
+async function renderProcess() {
+  setTab("verwerken");
+  view().classList.add("wide");
+  if (!isDesktop()) {
+    view().innerHTML = `
+      <div class="panel empty">
+        <h2>Alleen op een computer</h2>
+        <p class="muted">De verzamelbak verwerk je op een computer met een groot scherm, zodat je links je barcodes en rechts de database naast elkaar ziet. Op je telefoon kun je wel verder verzamelen via <a href="#verzamel">Snel scannen</a>.</p>
+      </div>`;
+    return;
+  }
+  view().innerHTML = `<div class="loading">Verzamelbak ophalen…</div>`;
+  let items;
+  try { items = await fetchInbox(); }
+  catch (err) { view().innerHTML = `<p class="error">Laden lukte niet: ${esc(err.message)}</p>`; return; }
+  let current = null, lookup = null, chosen = null, results = [], seq = 0;
+
+  view().innerHTML = `
+    <div class="stack">
+      <div>
+        <h1>Verzamelbak verwerken</h1>
+        <p class="muted">Kies links een barcode, zoek rechts het bier in de database, en voeg samen of voeg toe als nieuw bier.</p>
+      </div>
+      <div class="process-grid">
+        <aside class="panel process-left">
+          <h2>Verzameld <span class="muted small" id="pCount"></span></h2>
+          <div class="process-list" id="pList"></div>
+        </aside>
+        <section class="panel process-right stack">
+          <div id="pDetail"><p class="muted">Kies links een barcode.</p></div>
+          <div class="process-search" id="pSearchWrap" hidden>
+            <input class="input" type="search" id="pSearch" placeholder="Zoek op naam, brouwerij, stijl of omschrijving (elk woord moet voorkomen)" autocomplete="off">
+            <div class="process-results" id="pResults"></div>
+          </div>
+          <div id="pNew" hidden></div>
+        </section>
+      </div>
+      <div class="process-bar" id="pBar" hidden>
+        <span class="muted small" id="pChosen">Geen bier geselecteerd</span>
+        <button class="btn" type="button" id="pMerge" disabled>Samenvoegen met geselecteerd bier</button>
+        <button class="btn soft" type="button" id="pAdd">Als nieuw bier toevoegen</button>
+        <button class="btn danger" type="button" id="pDel">Verwijderen uit verzamelbak</button>
+      </div>
+    </div>`;
+
+  const drawList = () => {
+    $("#pCount").textContent = `(${items.length})`;
+    $("#pList").innerHTML = items.length ? items.map(it => `
+      <button type="button" class="process-item ${current?.id === it.id ? "on" : ""}" data-item="${it.id}">
+        ${it.photo_path ? `<img src="${esc(photoUrl(it.photo_path))}" alt="" loading="lazy">` : `<span class="ph">${glassSvg("var(--line)")}</span>`}
+        <span class="db-body"><b>${esc(it.code)}</b><span class="muted small">${esc(it.note || "Geen omschrijving")}</span><span class="muted small">${fmtDate(it.created_at)}</span></span>
+      </button>`).join("") : `<p class="muted">Je verzamelbak is leeg. Proost!</p>`;
+  };
+  const drawChosen = () => {
+    $("#pChosen").innerHTML = chosen ? `Geselecteerd: <b>${esc(chosen.name)}</b>${chosen.brewery ? `, ${esc(chosen.brewery)}` : ""}` : "Geen bier geselecteerd";
+    $("#pMerge").disabled = !chosen;
+    document.querySelectorAll("[data-pick]").forEach(r => r.classList.toggle("on", r.dataset.pick === chosen?.id));
+  };
+  const search = async () => {
+    const my = ++seq;
+    // Elk woord moet ergens voorkomen (naam, brouwerij, stijl of omschrijving)
+    const words = $("#pSearch").value.replace(/[,()%*\\]/g, " ").split(/\s+/).map(w => w.trim()).filter(w => w.length >= 2).slice(0, 4);
+    if (!words.length) { $("#pResults").innerHTML = `<p class="muted small">Typ minstens 2 tekens.</p>`; return; }
+    $("#pResults").innerHTML = `<p class="muted small">Zoeken…</p>`;
+    let query = sb.from("beers").select("*");
+    for (const w of words) query = query.or(`name.ilike.%${w}%,brewery.ilike.%${w}%,style.ilike.%${w}%,description.ilike.%${w}%`);
+    const { data } = await query.order("name").limit(40);
+    if (my !== seq) return;
+    results = data || [];
+    $("#pResults").innerHTML = results.length ? results.map(b => `
+      <button type="button" class="db-row pick-row" data-pick="${b.id}">
+        ${photoBlock(b.image_path, b.style)}
+        <span class="db-body"><b>${esc(b.name)}</b>
+          <span class="beer-meta">${b.brewery ? `<span>${esc(b.brewery)}</span>` : ""}${b.style ? `<span>${esc(b.style)}</span>` : ""}${b.abv != null ? `<span>${nf(b.abv)}%</span>` : ""}</span>
+          <span class="tags">${b.barcode ? `<span class="tag">Heeft al barcode</span>` : `<span class="tag on">Nog geen barcode</span>`}${b.image_path ? "" : `<span class="tag">Geen foto</span>`}</span>
+        </span>
+      </button>`).join("") : `<p class="muted small">Niets gevonden. Voeg het toe als nieuw bier.</p>`;
+    drawChosen();
+  };
+  let t;
+  $("#pSearch").oninput = () => { clearTimeout(t); t = setTimeout(search, 250); };
+  $("#pResults").onclick = e => {
+    const r = e.target.closest("[data-pick]");
+    if (!r) return;
+    chosen = results.find(b => b.id === r.dataset.pick) || null;
+    drawChosen();
+  };
+
+  const select = async id => {
+    current = items.find(x => x.id === id) || null;
+    chosen = null; lookup = null;
+    drawList();
+    $("#pNew").hidden = true;
+    if (!current) { $("#pDetail").innerHTML = `<p class="muted">Kies links een barcode.</p>`; $("#pSearchWrap").hidden = true; $("#pBar").hidden = true; return; }
+    $("#pSearchWrap").hidden = false; $("#pBar").hidden = false;
+    $("#pDetail").innerHTML = `
+      <div class="process-detail">
+        ${current.photo_path ? `<button type="button" class="zoomable" data-zoom="${esc(photoUrl(current.photo_path))}"><img src="${esc(photoUrl(current.photo_path))}" alt="Foto uit je verzamelbak"></button>` : ""}
+        <div>
+          <h2>${esc(current.code)}</h2>
+          ${current.note ? `<p>${esc(current.note)}</p>
+            ${canEditAll(null) ? `<label class="check small"><input type="checkbox" id="pUseNote"> Bij samenvoegen als omschrijving van het bier gebruiken (alleen als die nog leeg is)</label>` : ""}` : `<p class="muted">Geen omschrijving</p>`}
+          <p class="small" id="pLookup"><span class="muted">Opzoeken in de database en alle bronnen…</span></p>
+        </div>
+      </div>`;
+    drawChosen();
+    const id0 = current.id;
+    const res = await lookupBarcode(current.code);
+    if (current?.id !== id0) return;
+    lookup = res;
+    if (res.beer) {
+      $("#pLookup").innerHTML = `Deze barcode staat al in de database bij <b>${esc(res.beer.name)}</b>${res.beer.brewery ? `, ${esc(res.beer.brewery)}` : ""}. Samenvoegen met dat bier voegt alleen de foto toe als die nog ontbreekt.`;
+      results = [res.beer]; chosen = res.beer;
+      $("#pSearch").value = res.beer.name;
+      search().then(() => { chosen = res.beer; drawChosen(); });
+    } else if (res.prefill?.source) {
+      $("#pLookup").innerHTML = `Gevonden via ${esc(res.prefill.source)}: <b>${esc(res.prefill.name)}</b>${res.prefill.brewery ? `, ${esc(res.prefill.brewery)}` : ""}${res.prefill.abv != null ? `, ${nf(res.prefill.abv)}%` : ""}.`;
+      $("#pSearch").value = res.prefill.name || firstWords(current.note);
+      search();
+    } else {
+      $("#pLookup").innerHTML = `<span class="muted">Deze barcode is in geen enkele bron bekend.</span>`;
+      $("#pSearch").value = firstWords(current.note);
+      if (current.note) search(); else $("#pResults").innerHTML = "";
+    }
+  };
+  $("#pList").onclick = e => { const b = e.target.closest("[data-item]"); if (b) select(b.dataset.item); };
+
+  const done = async (msg, photoInUse) => {
+    await deleteInboxItem(current, photoInUse);
+    toast(msg);
+    items = items.filter(x => x.id !== current.id);
+    const next = items[0]?.id || null;
+    current = null;
+    select(next);
+  };
+
+  // Samenvoegen met het geselecteerde bier
+  $("#pMerge").onclick = async () => {
+    if (!current || !chosen) return;
+    const btn = $("#pMerge"); btn.disabled = true;
+    try {
+      const owner = await findBeerByCode(current.code);
+      if (owner && owner.id !== chosen.id) throw new Error(`Deze barcode hoort al bij “${owner.name}”. Kies dat bier, of verwijder deze barcode uit je verzamelbak.`);
+      if (!owner) {
+        const { error } = await sb.rpc("link_barcode", { beer: chosen.id, code: current.code });
+        if (error) throw error;
+      }
+      let photoUsed = false;
+      if (current.photo_path && !chosen.image_path) {
+        const { error } = await sb.from("beers").update({ image_path: current.photo_path }).eq("id", chosen.id);
+        if (!error) photoUsed = true;
+      }
+      if (current.note && !chosen.description && canEditAll(chosen) && $("#pUseNote")?.checked) {
+        await sb.from("beers").update({ description: current.note }).eq("id", chosen.id);
+      }
+      await done(`Samengevoegd met ${chosen.name}${photoUsed ? ", met foto" : ""}`, photoUsed);
+    } catch (ex) {
+      toast(ex.message || String(ex));
+      btn.disabled = false;
+    }
+  };
+
+  // Als nieuw bier toevoegen
+  $("#pAdd").onclick = () => {
+    if (!current) return;
+    if (lookup?.beer) return toast(`Deze barcode staat al bij ${lookup.beer.name}. Voeg samen in plaats van een nieuw bier te maken.`);
+    const pre = { ...(lookup?.prefill || {}), barcode: current.code };
+    if (!pre.name && current.note) pre.name = current.note.slice(0, 200);
+    pre.description = current.note || "";
+    const box = $("#pNew");
+    box.hidden = false;
+    box.innerHTML = `
+      <form class="stack new-beer-form" id="pNewForm" novalidate>
+        <h2>Nieuw bier</h2>
+        <p class="muted small">Barcode ${esc(current.code)}${current.photo_path ? ", met je foto als standaardfoto" : ""}.</p>
+        ${beerFields(pre)}
+        <p class="error" id="pNewErr" hidden></p>
+        <div style="display:flex;gap:10px">
+          <button class="btn" type="submit">Bier toevoegen</button>
+          <button class="btn ghost" type="button" id="pNewCancel">Annuleren</button>
+        </div>
+      </form>`;
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+    $("#pNewCancel").onclick = () => { box.hidden = true; };
+    $("#pNewForm").onsubmit = async e => {
+      e.preventDefault();
+      const err = $("#pNewErr"); err.hidden = true;
+      const fields = readBeerFields(new FormData(e.target));
+      if (!fields.name) { err.textContent = "Vul de naam van het bier in."; err.hidden = false; return; }
+      const insert = { ...fields, barcode: current.code, image_path: current.photo_path || pre.image_path || null, source: pre.source || "manual" };
+      const { error } = await sb.from("beers").insert(insert);
+      if (error) { err.textContent = error.code === "23505" ? "Deze barcode hoort al bij een ander bier." : "Toevoegen lukte niet: " + error.message; err.hidden = false; return; }
+      box.hidden = true;
+      await done(`${fields.name} toegevoegd aan de database`, !!current.photo_path);
+    };
+  };
+
+  // Verwijderen uit de verzamelbak
+  $("#pDel").onclick = async () => {
+    if (!current) return;
+    if (!(await confirmDelete("Uit je verzamelbak verwijderen?",
+      `<p><b>${esc(current.code)}</b>${current.note ? `<br>${esc(current.note)}` : ""}</p>${current.photo_path ? `<img src="${esc(photoUrl(current.photo_path))}" alt="" style="max-height:160px;border-radius:10px">` : ""}`))) return;
+    await done("Verwijderd uit je verzamelbak", false);
+  };
+
+  drawList();
+  if (items.length) select(items[0].id);
+}
+
+// ---------------------------------------------------------------------
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
@@ -5283,13 +5662,14 @@ const params = new URLSearchParams(location.search);
 const publicUser = params.get("u");
 
 async function route() {
+  view().classList.remove("wide");
   closeLightbox();
   if ($("#dlg").open) closeDialog();
   view().onclick = null;
   view().onchange = null;
   view().onsubmit = null;
   view().onpointerdown = null;
-  if (location.hash !== "#inchecken") stopScanner();
+  stopScanner();
   if (publicUser && (!location.hash || location.hash === "#")) return renderPublic(publicUser);
   if (!state.user) return renderAuth();
   if (await mfaGate()) return;
@@ -5303,6 +5683,8 @@ async function route() {
   if (h === "activiteit") return renderFeed();
   if (h === "badges") return renderBadges();
   if (h === "database") return renderDatabase();
+  if (h === "verzamel") return renderCollect();
+  if (h === "verwerken") return renderProcess();
   if (h === "untappd") return renderUntappdImport();
   if (h === "controleren") return renderReview();
   if (h === "barcodes") return renderBarcodes();
