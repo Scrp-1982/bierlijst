@@ -494,9 +494,10 @@ details.fold[open] > summary { border-bottom: 1px solid var(--line); border-radi
 .post-meta { font-size: 0.88rem; color: var(--muted); }
 .post-rating { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .post-rating b { font-family: var(--display); }
+.post-date { margin-left: auto; font-size: 0.88rem; color: var(--muted); white-space: nowrap; }
 .post-notes { margin-top: 8px; overflow-wrap: anywhere; }
 .post-photo { margin-top: 12px; border-radius: 14px; overflow: hidden; background: var(--paper); }
-.post-photo img { width: 100%; max-height: 420px; object-fit: cover; }
+.post-photo img { width: 100%; height: 260px; object-fit: cover; }
 .comments { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
 .comment { display: flex; gap: 10px; align-items: flex-start; }
 .comment .avatar { width: 30px; height: 30px; font-size: 0.85rem; }
@@ -675,7 +676,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-23.9";
+const APP_VERSION = "2026-10-23.10";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -730,6 +731,11 @@ const fmtDate = (iso, tz) => {
   catch { return new Date(iso).toLocaleDateString("nl-NL", o); }
 };
 // Datum en tijd zoals het daar was, met de plaats erbij als het een andere tijdzone is
+// Kort: "17 okt 2026, 20:15" in de plaatselijke tijd van de check-in
+function fmtShortWhen(iso, tz) {
+  const p = partsIn(iso, tz);
+  return `${fmtDate(iso, tz)}, ${String(p.h).padStart(2, "0")}:${String(p.mi).padStart(2, "0")}`;
+}
 function fmtWhen(iso, tz) {
   const p = partsIn(iso, tz);
   const time = `${String(p.h).padStart(2, "0")}:${String(p.mi).padStart(2, "0")}`;
@@ -4372,10 +4378,13 @@ function postHtml(c) {
         <div>
           <p class="post-title"><b>${esc(c.profile?.display_name || "Iemand")}</b> dronk <a href="#" class="beername" data-open="${c.id}">${esc(b.name || "een bier")}</a></p>
           <p class="post-meta">${esc([b.brewery, b.style].filter(Boolean).join(", "))}</p>
-          <p class="post-meta">${relTime(c.drunk_at)}${c.location_name ? `, ${esc(c.location_name)}` : ""}${c.serving ? `, ${esc(c.serving)}` : ""}</p>
+          ${c.location_name || c.serving ? `<p class="post-meta">${[c.location_name, c.serving].filter(Boolean).map(esc).join(", ")}</p>` : ""}
         </div>
       </div>
-      ${c.rating != null ? `<div class="post-rating">${stars(c.rating)}<b>${nf(c.rating, 2)}</b></div>` : ""}
+      <div class="post-rating">
+        ${c.rating != null ? `${stars(c.rating)}<b>${nf(c.rating, 2)}</b>` : `<span class="muted small">Geen score</span>`}
+        <span class="post-date" title="${esc(fmtWhen(c.drunk_at, c.tz))}">${fmtShortWhen(c.drunk_at, c.tz)}</span>
+      </div>
       ${c.notes ? `<p class="post-notes">${esc(c.notes)}</p>` : ""}
       ${c.photo_path ? `<button type="button" class="post-photo zoomable" data-zoom="${esc(photoUrl(c.photo_path))}" aria-label="Foto groot bekijken"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto van ${esc(b.name || "het bier")}" loading="lazy"></button>` : ""}
       ${cheerHtml(c, mine)}
