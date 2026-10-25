@@ -406,12 +406,25 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 .photo-compare img { width: 110px; height: 110px; object-fit: cover; border-radius: 10px; display: block; }
 .photo-compare figcaption { font-size: .8rem; color: var(--muted); margin-top: 4px; }
 .photo-compare > div { flex: 1; min-width: 200px; display: grid; gap: 6px; }
+#pMerge.dim { opacity: .55; }
+.process-right { padding-bottom: 24px; }
+@media (max-width: 999px) { .process-right { padding-bottom: 150px; } #pNew, #pEdit { scroll-margin-top: 80px; } }
 .process-bar {
   position: sticky; bottom: 0; z-index: 5; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 12px 16px;
   box-shadow: 0 -6px 20px rgba(0, 0, 0, .06);
 }
 .process-bar #pChosen { flex: 1; min-width: 200px; }
+.src-lines { display: grid; gap: 6px; margin-top: 6px; }
+.src-line { display: flex; gap: 8px; align-items: flex-start; font-size: .9rem; padding: 6px 10px; border-radius: 10px; }
+.src-line .src-ic { flex: none; width: 18px; text-align: center; font-weight: 800; }
+.src-line.ok { background: var(--hop-soft); }
+.src-line.ok .src-ic { color: var(--hop); }
+.src-line.no { background: var(--paper); color: var(--muted); }
+.src-line.web { background: #E7F0FA; }
+@media (prefers-color-scheme: dark) { .src-line.web { background: #1E2C3A; } }
+.src-head { font-weight: 700; color: var(--hop); }
+.src-head.web { color: inherit; }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -727,7 +740,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-24.6";
+const APP_VERSION = "2026-10-24.8";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -1592,6 +1605,19 @@ async function fillCodesFact(beerId) {
   if (list.length) el.textContent = list.join(", ");
 }
 
+// Duidelijk onderscheid: staat het in onze database, of is het online gevonden?
+function sourceLines(res) {
+  const b = res?.beer, f = res?.prefill;
+  const db = b
+    ? `<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>In de database:</b> ${esc(b.name)}${b.brewery ? `, ${esc(b.brewery)}` : ""}</span></div>`
+    : `<div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Niet in de database.</b> Deze barcode hoort nog bij geen enkel bier.</span></div>`;
+  if (b) return db;
+  const web = f?.source && f.source !== "manual"
+    ? `<div class="src-line web"><span class="src-ic" aria-hidden="true">🌐</span><span><b>Online gevonden</b> bij ${esc(f.source)}: ${esc(f.name || "")}${f.brewery ? `, ${esc(f.brewery)}` : ""}${f.abv != null ? `, ${nf(f.abv)}%` : ""}</span></div>`
+    : `<div class="src-line no"><span class="src-ic" aria-hidden="true">🌐</span><span>Online ook niets gevonden.</span></div>`;
+  return db + web;
+}
+
 async function lookupBarcode(code) {
   const data = await findBeerByCode(code);
   if (data) return { beer: data };
@@ -1734,7 +1760,7 @@ function renderCheckin() {
           <h2>Nieuw bier</h2>
           <button class="btn ghost small" id="changeBtn" type="button">Annuleren</button>
         </div>
-        ${d.prefill?.source && d.prefill.source !== "manual" ? `<p class="muted small">Gegevens gevonden via ${esc(d.prefill.source)}. Controleer ze en vul aan waar nodig.</p>` : ""}
+        ${d.prefill?.source && d.prefill.source !== "manual" ? `<div class="src-lines">${sourceLines({ prefill: d.prefill })}</div><p class="muted small">De gegevens hieronder komen van internet. Controleer ze en vul aan waar nodig.</p>` : ""}
         ${d.prefill?.barcode && !d.prefill?.source ? `<p class="muted small">Barcode ${esc(d.prefill.barcode)} is in geen enkele bron bekend. Vul de gegevens in, dan herkent de app dit bier voortaan.</p>` : ""}
         ${beerFields(d.prefill || {}, { barcode: true })}
       </div>
@@ -1816,14 +1842,14 @@ function renderCheckin() {
       const q = cleanQ();
       if (q.length < 2) { $("#results").innerHTML = ""; return; }
       $("#results").innerHTML =
-        (own.length ? `<p class="small muted">In jullie lijst</p>` + own.map(b => item(`data-id="${b.id}"`, b.name, [b.brewery, b.style].filter(Boolean).join(", "), statTags(ownStats[b.id], b.id))).join("")
-                    : `<p class="small muted">Niet gevonden in jullie lijst.</p>`) +
-        (offState === "loading" ? `<p class="small muted" style="margin-top:6px">Zoeken in Open Food Facts…</p>` : "") +
+        (own.length ? `<p class="small src-head">✓ In de database</p>` + own.map(b => item(`data-id="${b.id}"`, b.name, [b.brewery, b.style].filter(Boolean).join(", "), statTags(ownStats[b.id], b.id))).join("")
+                    : `<p class="small muted">✗ Niet gevonden in de database.</p>`) +
+        (offState === "loading" ? `<p class="small muted" style="margin-top:6px">🌐 Online zoeken in Open Food Facts…</p>` : "") +
         (offState === "done" ? (ext.length
-            ? `<p class="small muted" style="margin-top:6px">Uit Open Food Facts</p>` + ext.map((p, i) => item(`data-off="${i}"`, p.product_name || p.product_name_nl || p.product_name_en, (p.brands || "").split(",")[0])).join("")
-            : `<p class="small muted" style="margin-top:6px">Ook niet gevonden in Open Food Facts. Voeg het toe als nieuw bier.</p>`) : "") +
+            ? `<p class="small src-head web" style="margin-top:6px">🌐 Online gevonden in Open Food Facts (nog niet in de database)</p>` + ext.map((p, i) => item(`data-off="${i}"`, p.product_name || p.product_name_nl || p.product_name_en, (p.brands || "").split(",")[0])).join("")
+            : `<p class="small muted" style="margin-top:6px">🌐 Online ook niets gevonden. Voeg het toe als nieuw bier.</p>`) : "") +
         (offState === "error" ? `<p class="small error" style="margin-top:6px">${esc(offMsg)}</p>` : "") +
-        (offState !== "loading" && offState !== "done" ? `<button type="button" class="btn soft small" id="offBtn" style="margin-top:8px">Zoek in Open Food Facts</button>` : "");
+        (offState !== "loading" && offState !== "done" ? `<button type="button" class="btn soft small" id="offBtn" style="margin-top:8px">🌐 Ook online zoeken (Open Food Facts)</button>` : "");
     };
     const runOff = async () => {
       const q = cleanQ();
@@ -3530,9 +3556,9 @@ async function renderBeerForm(id) {
     if (found.beer) { msg.textContent = "Deze barcode hoort al bij dit bier."; return; }
     if (found.prefill?.source) {
       const n = fill(found.prefill);
-      msg.textContent = `Gevonden via ${found.prefill.source}. ${n ? `${n} ${n === 1 ? "veld" : "velden"} aangevuld, controleer ze even.` : "Alle velden waren al ingevuld."}`;
+      msg.innerHTML = sourceLines(found) + `<span class="small">${n ? `${n} ${n === 1 ? "veld" : "velden"} aangevuld met de online gegevens; controleer ze even.` : "Alle velden waren al ingevuld."}</span>`;
     } else {
-      msg.textContent = "Deze barcode is in geen enkele bron bekend. Vul de gegevens zelf in, dan kent de app hem voortaan.";
+      msg.innerHTML = sourceLines(found) + `<span class="small">Vul de gegevens zelf in, dan kent de app deze barcode voortaan.</span>`;
     }
   };
 
@@ -3846,7 +3872,8 @@ async function handleBcScan(code) {
 
   box.innerHTML = `
     <div class="panel stack">
-      <p>Barcode <b>${esc(code)}</b>${f.name ? `: gevonden via ${esc(f.source)} als <b>${esc(f.name)}</b>${f.brewery ? ` (${esc(f.brewery)})` : ""}` : " is in geen enkele bron bekend"}.</p>
+      <p>Barcode <b>${esc(code)}</b></p>
+      <div class="src-lines">${sourceLines(res)}</div>
       ${suggestions.length ? `<h3>Is het een van deze?</h3><div class="db-list">${suggestions.map(b => bcRow(b, `<button class="btn small" type="button" data-bclink="${b.id}">Koppelen</button>`)).join("")}</div>` : ""}
       <label class="field"><span>${suggestions.length ? "Of zoek het juiste bier" : "Zoek het bier in de database"}</span>
         <input class="input" type="search" id="bcFind" placeholder="Typ een paar letters" autocomplete="off" value="${esc(suggestions.length ? "" : (f.name || ""))}"></label>
@@ -4652,6 +4679,7 @@ async function renderProcess() {
         <section class="panel process-right stack">
           <div id="pDetail"><p class="muted">Kies links een barcode.</p></div>
           <div class="process-search" id="pSearchWrap" hidden>
+            <h3 style="margin-bottom:8px">Zoeken in de database</h3>
             <input class="input" type="search" id="pSearch" placeholder="Zoek op naam, brouwerij, stijl of omschrijving (elk woord moet voorkomen)" autocomplete="off">
             <div class="process-results" id="pResults"></div>
           </div>
@@ -4660,8 +4688,8 @@ async function renderProcess() {
         </section>
       </div>
       <div class="process-bar" id="pBar" hidden>
-        <span class="muted small" id="pChosen">Geen bier geselecteerd</span>
-        <button class="btn" type="button" id="pMerge" disabled><span class="lbl-long">Samenvoegen met geselecteerd bier</span><span class="lbl-short">Samenvoegen</span></button>
+        <span class="muted small" id="pChosen">Tik een bier aan in de zoekresultaten, of kies Nieuw bier</span>
+        <button class="btn" type="button" id="pMerge"><span class="lbl-long">Samenvoegen met geselecteerd bier</span><span class="lbl-short">Samenvoegen</span></button>
         <button class="btn soft" type="button" id="pAdd"><span class="lbl-long">Als nieuw bier toevoegen</span><span class="lbl-short">Nieuw bier</span></button>
         <button class="btn danger" type="button" id="pDel"><span class="lbl-long">Verwijderen uit verzamelbak</span><span class="lbl-short">Verwijderen</span></button>
       </div>
@@ -4677,8 +4705,9 @@ async function renderProcess() {
   };
   let editFor = null;
   const drawChosen = () => {
-    $("#pChosen").innerHTML = chosen ? `Geselecteerd: <b>${esc(chosen.name)}</b>${chosen.brewery ? `, ${esc(chosen.brewery)}` : ""}` : "Geen bier geselecteerd";
-    $("#pMerge").disabled = !chosen;
+    if (!$("#pNew").hidden && !chosen) return;   // bezig met een nieuw bier: die melding laten staan
+    $("#pChosen").innerHTML = chosen ? `Geselecteerd: <b>${esc(chosen.name)}</b>${chosen.brewery ? `, ${esc(chosen.brewery)}` : ""}` : "Tik een bier aan in de zoekresultaten, of kies Nieuw bier";
+    $("#pMerge").classList.toggle("dim", !chosen);
     document.querySelectorAll("[data-pick]").forEach(r => r.classList.toggle("on", r.dataset.pick === chosen?.id));
     const box = $("#pEdit");
     if (!chosen || !current) { box.hidden = true; editFor = null; return; }
@@ -4692,7 +4721,7 @@ async function renderProcess() {
       <div class="edit-block stack">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
           <h2>Gegevens van ${esc(chosen.name)}</h2>
-          ${full && pre?.source ? `<button type="button" class="btn soft small" id="pFill">Lege velden aanvullen uit ${esc(pre.source)}</button>` : ""}
+          ${full && pre?.source ? `<button type="button" class="btn soft small" id="pFill">🌐 Lege velden aanvullen met online gegevens (${esc(pre.source)})</button>` : ""}
         </div>
         ${full ? `<p class="muted small">Vul aan of verbeter wat je wilt; bij Samenvoegen wordt alles in één keer opgeslagen${state.me?.is_admin ? "" : " en daarna door de beheerder gecontroleerd"}.</p>`
           : `<p class="notice small">Bij dit bier kun je de barcode en een ontbrekende foto toevoegen. Andere gegevens kan een databasebeheerder aanpassen.</p>`}
@@ -4738,6 +4767,7 @@ async function renderProcess() {
     const r = e.target.closest("[data-pick]");
     if (!r) return;
     chosen = results.find(b => b.id === r.dataset.pick) || null;
+    $("#pNew").hidden = true;
     drawChosen();
   };
 
@@ -4755,7 +4785,7 @@ async function renderProcess() {
           <h2>${esc(current.code)}</h2>
           <p class="muted small">Ingestuurd door ${esc(current.profile?.display_name || "iemand")} op ${fmtDate(current.created_at)}</p>
           ${current.note ? `<p>${esc(current.note)}</p>` : `<p class="muted">Geen omschrijving</p>`}
-          <p class="small" id="pLookup"><span class="muted">Opzoeken in de database en alle bronnen…</span></p>
+          <div class="src-lines" id="pLookup"><span class="muted small">Opzoeken in de database en online…</span></div>
         </div>
       </div>`;
     drawChosen();
@@ -4764,16 +4794,16 @@ async function renderProcess() {
     if (current?.id !== id0) return;
     lookup = res;
     if (res.beer) {
-      $("#pLookup").innerHTML = `Deze barcode staat al in de database bij <b>${esc(res.beer.name)}</b>${res.beer.brewery ? `, ${esc(res.beer.brewery)}` : ""}. Samenvoegen met dat bier voegt alleen de foto toe als die nog ontbreekt.`;
+      $("#pLookup").innerHTML = sourceLines(res) + `<p class="muted small">Samenvoegen met dat bier voegt je aanvullingen en (als je dat kiest) de foto toe.</p>`;
       results = [res.beer]; chosen = res.beer;
       $("#pSearch").value = res.beer.name;
       search().then(() => { chosen = res.beer; editFor = null; drawChosen(); });
     } else if (res.prefill?.source) {
-      $("#pLookup").innerHTML = `Gevonden via ${esc(res.prefill.source)}: <b>${esc(res.prefill.name)}</b>${res.prefill.brewery ? `, ${esc(res.prefill.brewery)}` : ""}${res.prefill.abv != null ? `, ${nf(res.prefill.abv)}%` : ""}.`;
+      $("#pLookup").innerHTML = sourceLines(res);
       $("#pSearch").value = res.prefill.name || firstWords(current.note);
       search();
     } else {
-      $("#pLookup").innerHTML = `<span class="muted">Deze barcode is in geen enkele bron bekend.</span>`;
+      $("#pLookup").innerHTML = sourceLines(res);
       $("#pSearch").value = firstWords(current.note);
       if (current.note) search(); else $("#pResults").innerHTML = "";
     }
@@ -4799,7 +4829,8 @@ async function renderProcess() {
 
   // Samenvoegen met het geselecteerde bier: alles in één keer
   $("#pMerge").onclick = async () => {
-    if (!current || !chosen) return;
+    if (!current) return;
+    if (!chosen) return toast("Tik eerst in de zoekresultaten het bier aan waarmee je wilt samenvoegen.");
     const btn = $("#pMerge"); btn.disabled = true;
     try {
       const patch = {};
@@ -4832,8 +4863,11 @@ async function renderProcess() {
     if (!pre.name && current.note) pre.name = current.note.slice(0, 200);
     pre.description = current.note || "";
     const box = $("#pNew");
-    $("#pEdit").hidden = true; chosen = null; editFor = null; drawChosen();
+    $("#pEdit").hidden = true; chosen = null; editFor = null;
     box.hidden = false;
+    document.querySelectorAll("[data-pick]").forEach(r => r.classList.remove("on"));
+    $("#pMerge").classList.add("dim");
+    $("#pChosen").innerHTML = "<b>Nieuw bier:</b> vul de gegevens in en tik op Bier toevoegen";
     box.innerHTML = `
       <form class="stack new-beer-form" id="pNewForm" novalidate>
         <h2>Nieuw bier</h2>
@@ -4846,8 +4880,8 @@ async function renderProcess() {
           <button class="btn ghost" type="button" id="pNewCancel">Annuleren</button>
         </div>
       </form>`;
-    box.scrollIntoView({ behavior: "smooth", block: "start" });
-    $("#pNewCancel").onclick = () => { box.hidden = true; };
+    setTimeout(() => box.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    $("#pNewCancel").onclick = () => { box.hidden = true; drawChosen(); };
     $("#pNewForm").onsubmit = async e => {
       e.preventDefault();
       const err = $("#pNewErr"); err.hidden = true;
