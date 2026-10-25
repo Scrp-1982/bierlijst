@@ -105,6 +105,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .icon-btn svg { width: 26px; height: 26px; }
 .icon-btn.add { background: var(--hop); color: var(--hop-ink); border-radius: 50%; width: 38px; height: 38px; }
 .icon-btn.add svg { width: 20px; height: 20px; }
+.icon-btn.add.on { box-shadow: 0 0 0 3px var(--gold); }
 #menuBtn .chev-close { display: none; }
 body.menu-open #menuBtn .chev-open { display: none; }
 body.menu-open #menuBtn .chev-close { display: inline; }
@@ -693,7 +694,6 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 <nav class="drawer" id="drawer" aria-label="Hoofdmenu">
   <a href="#lijst" data-tab="lijst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>Mijn bieren</a>
   <a href="#activiteit" data-tab="activiteit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Activiteit</a>
-  <a href="#inchecken" data-tab="inchecken"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Inchecken</a>
   <a href="#verzamel" data-tab="verzamel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Snel scannen</a>
   <a href="#database" data-tab="database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Bierdatabase</a>
   <a href="#badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>Badges</a>
@@ -727,7 +727,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-24.5";
+const APP_VERSION = "2026-10-24.6";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -881,6 +881,7 @@ function stars(r) {
 }
 
 function setTab(name) {
+  document.querySelector(".icon-btn.add")?.classList.toggle("on", name === "inchecken");
   document.querySelectorAll("#drawer a").forEach(a => {
     if (a.dataset.tab === name) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -1138,7 +1139,6 @@ function renderCollection(groups, { title, intro, own, profile }) {
           ${intro ? `<p class="muted">${intro}</p>` : ""}
           </div>
         </div>
-        ${own && groups.length ? `<a class="btn" href="#inchecken">Bier inchecken</a>` : ""}
       </div>
       ${groups.length ? `
         <div>
@@ -3931,6 +3931,58 @@ async function updateReviewCount() {
   if (el) { el.textContent = count || ""; el.hidden = !count; }
 }
 
+// Een nieuw (dubbel) bier laten opgaan in een bestaand bier; check-ins, foto's,
+// reacties en proosts verhuizen mee, dus de posts blijven intact
+function mergeNewBeer(newId, name, brewery) {
+  return new Promise(resolve => {
+    let found = [], seq = 0;
+    openDialog(`
+      <div class="stack">
+        <h2>Samenvoegen met bestaand bier</h2>
+        <p>Nieuw bier: <b>${esc(name)}</b>${brewery ? ` <span class="muted">${esc(brewery)}</span>` : ""}</p>
+        <p class="muted small">Kies het bier waarin dit nieuwe bier moet opgaan. Check-ins, foto’s, reacties en proosts verhuizen mee, en barcodes ook.</p>
+        <input class="input" type="search" id="mnSearch" placeholder="Zoek op naam of brouwerij" autocomplete="off" value="${esc(name)}">
+        <div class="results" id="mnResults"></div>
+      </div>`);
+    const search = async () => {
+      const my = ++seq;
+      const words = $("#mnSearch").value.replace(/[,()%*\\]/g, " ").split(/\s+/).filter(w => w.length >= 2).slice(0, 4);
+      if (!words.length) { $("#mnResults").innerHTML = ""; return; }
+      let q = sb.from("beers").select("id, name, brewery, style, abv").neq("id", newId);
+      for (const w of words) q = q.or(`name.ilike.%${w}%,brewery.ilike.%${w}%`);
+      const { data } = await q.order("name").limit(15);
+      if (my !== seq || !$("#mnResults")) return;
+      found = data || [];
+      $("#mnResults").innerHTML = found.length ? found.map(b => `
+        <button type="button" class="result" data-mnpick="${b.id}">
+          <span><b>${esc(b.name)}</b><br><span class="muted small">${esc([b.brewery, b.style, b.abv != null ? nf(b.abv) + "%" : ""].filter(Boolean).join(", "))}</span></span>
+          <span class="muted small">Kies</span>
+        </button>`).join("") : `<p class="muted small">Niets gevonden. Probeer minder of andere woorden.</p>`;
+    };
+    let t;
+    $("#mnSearch").oninput = () => { clearTimeout(t); t = setTimeout(search, 250); };
+    search();
+    $("#dlgBody").onclick = async e => {
+      const r = e.target.closest("[data-mnpick]");
+      if (!r) return;
+      const keep = found.find(b => b.id === r.dataset.mnpick);
+      $("#dlg").removeEventListener("close", onClose);   // het bevestigingsvenster sluit dit venster
+      const { count } = await sb.from("checkins").select("id", { count: "exact", head: true }).eq("beer_id", newId);
+      const ok = await confirmDelete("Samenvoegen?",
+        `<p><b>${esc(name)}</b> gaat op in <b>${esc(keep.name)}</b>${keep.brewery ? ` (${esc(keep.brewery)})` : ""}.</p>
+         <p class="small">${count ? `${count} ${count === 1 ? "check-in verhuist" : "check-ins verhuizen"} mee, met foto’s, reacties en proosts.` : "Er zijn geen check-ins om te verhuizen."} Het nieuwe bier verdwijnt daarna.</p>`,
+        "Ja, samenvoegen");
+      if (!ok) return resolve(false);
+      const { data, error } = await sb.rpc("admin_merge_beers", { keep: keep.id, remove: newId });
+      if (error) { toast("Samenvoegen lukte niet: " + error.message); return resolve(false); }
+      toast(`Samengevoegd met ${keep.name}${data?.checkins ? `, ${data.checkins} ${data.checkins === 1 ? "check-in" : "check-ins"} verhuisd` : ""}`);
+      resolve(true);
+    };
+    const onClose = () => resolve(false);
+    $("#dlg").addEventListener("close", onClose, { once: true });
+  });
+}
+
 async function renderReview() {
   setTab("controleren");
   if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
@@ -3959,6 +4011,7 @@ async function renderReview() {
         </table></div>
         <div class="review-actions">
           <button class="btn small" type="button" data-approve="${c.id}">Goedkeuren</button>
+          ${c.kind === "nieuw" ? `<button class="btn soft small" type="button" data-mergenew="${c.beer_id}" data-name="${esc(c.beer?.name || "")}" data-brewery="${esc(c.beer?.brewery || "")}">Samenvoegen met bestaand bier</button>` : ""}
           <a class="btn ghost small" href="#database/bewerk/${c.beer_id}">Bewerken</a>
           <button class="btn danger small" type="button" data-reject="${c.id}" data-kind="${c.kind}" data-name="${esc(c.beer?.name || "")}">Afwijzen</button>
         </div>
@@ -3979,6 +4032,12 @@ async function renderReview() {
   draw();
 
   view().onclick = async e => {
+    const mg = e.target.closest("[data-mergenew]");
+    if (mg) {
+      const merged = await mergeNewBeer(mg.dataset.mergenew, mg.dataset.name, mg.dataset.brewery);
+      if (merged) { items = items.filter(x => x.beer_id !== mg.dataset.mergenew); draw(); updateReviewCount(); }
+      return;
+    }
     const ap = e.target.closest("[data-approve]"), rj = e.target.closest("[data-reject]");
     if (!ap && !rj) return;
     const id = (ap || rj).dataset.approve || (ap || rj).dataset.reject;
