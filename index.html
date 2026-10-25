@@ -803,7 +803,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-25.3";
+const APP_VERSION = "2026-10-25.4";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1827,7 +1827,7 @@ function renderCheckin() {
   const chooseHtml = `
     <div class="panel stack" id="chooseBox">
       <h2>Welk bier drink je?</h2>
-      ${barcodeToolsHtml()}
+      ${barcodeToolsHtml(false)}
       <div class="type-code">
         <input class="input" id="typedCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode intypen">
         <button class="btn ghost" type="button" id="typedCodeBtn">Opzoeken</button>
@@ -2210,7 +2210,7 @@ async function loadBeerStats(beer) {
   }
 }
 
-function barcodeToolsHtml() {
+function barcodeToolsHtml(withPhoto = true) {
   return `
       <button class="btn block" id="scanBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>
@@ -2218,12 +2218,13 @@ function barcodeToolsHtml() {
       </button>
       <div id="reader" hidden></div>
       <p class="small" id="scanMsg" hidden></p>
-      <label class="btn soft block" style="cursor:pointer">
+      ${withPhoto ? `<label class="btn soft block" style="cursor:pointer">
         <input type="file" accept="image/*" capture="environment" id="barcodePhoto" hidden>
         Foto van de barcode maken
-      </label>`;
+      </label>` : ""}`;
 }
 function bindBarcodePhoto(onCode) {
+  if (!$("#barcodePhoto")) return;   // niet op elke pagina aanwezig
   $("#barcodePhoto").onchange = async e => {
     const file = e.target.files[0];
     if (!file) return;
