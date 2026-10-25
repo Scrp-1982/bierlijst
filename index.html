@@ -271,6 +271,19 @@ fieldset.plain { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; 
 fieldset.plain:disabled .input { opacity: .6; }
 .username { display: inline-block; font-size: .9rem; font-weight: 600; color: var(--hop); margin-left: 4px; }
 .username .muted { font-weight: 400; font-style: italic; }
+.count-pill { display: inline-grid; place-items: center; min-width: 26px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--hop-soft); color: var(--hop); font: 700 .8rem var(--body); vertical-align: middle; }
+.user-list { display: grid; gap: 6px; margin-top: 12px; }
+.user-fold { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.user-fold > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; border-radius: var(--radius); }
+.user-fold > summary::-webkit-details-marker { display: none; }
+.user-fold > summary:hover { background: var(--paper); }
+.user-fold .uf-name { flex: 1; min-width: 0; line-height: 1.3; overflow-wrap: break-word; }
+.user-fold .uf-tags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.user-fold .chev { width: 20px; height: 20px; flex: none; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .user-fold .chev { transition: transform .18s; } }
+.user-fold[open] .chev { transform: rotate(180deg); }
+.user-fold[open] > summary { border-bottom: 1px solid var(--line); border-radius: var(--radius) var(--radius) 0 0; }
+.user-fold > .user-row { padding: 10px 12px 12px; border-top: 0; }
 .user-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .user-tags .tag { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; line-height: 1.3; }
 .role-switches { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
@@ -790,7 +803,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-25.2";
+const APP_VERSION = "2026-10-25.3";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -5488,6 +5501,9 @@ function tempPassword() {
   return [...arr].map(n => chars[n % chars.length]).join("");
 }
 
+// Welke blokken op de beheerpagina open staan (blijft zo na een actie)
+const adminOpen = new Set();
+
 async function renderAdmin() {
   setTab("beheer");
   if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
@@ -5512,27 +5528,40 @@ async function renderAdmin() {
       </form>
 
       ${open.length ? `
-        <div class="panel">
-          <h2>Openstaande uitnodigingen</h2>
+        <details class="panel fold" data-afold="invites" ${adminOpen.has("invites") ? "open" : ""}>
+          <summary><span><b class="fold-title">Openstaande uitnodigingen</b> <span class="count-pill">${open.length}</span></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary>
+          <div class="fold-body">
           ${open.map(i => `
             <div class="checkin-item">
               <div><b>${esc(i.email)}</b><br><span class="muted small">Uitgenodigd op ${fmtDate(i.created_at)}</span></div>
               <button class="btn ghost small" data-revoke="${esc(i.email)}">Intrekken</button>
             </div>`).join("")}
-        </div>` : ""}
+          </div>
+        </details>` : ""}
 
       <div class="panel">
-        <h2>Gebruikers</h2>
+        <h2>Gebruikers <span class="count-pill">${(users || []).length}</span></h2>
+        <div class="user-list">
         ${uErr ? `<p class="error">Gebruikers konden niet worden geladen: ${esc(uErr.message)}</p>` : (users || []).map(u => {
           const me = u.id === state.user.id;
           const name = esc(u.display_name || u.email);
           return `
+          <details class="user-fold" data-afold="${u.id}" ${adminOpen.has(u.id) ? "open" : ""}>
+          <summary>
+            ${avatarHtml(profById[u.id] || u, 36)}
+            <span class="uf-name">
+              <b>${esc(u.display_name || "Naamloos")}</b>${me ? ` <span class="muted small">(jij)</span>` : ""}<br>
+              <span class="username" style="margin-left:0">${profById[u.id]?.username ? "@" + esc(profById[u.id].username) : `<span class="muted">geen gebruikersnaam</span>`}</span>
+            </span>
+            <span class="uf-tags">
+              ${u.is_admin ? `<span class="tag on">Beheerder</span>` : u.is_db_editor ? `<span class="tag">Database</span>` : ""}
+              ${u.is_blocked ? `<span class="tag warn">Geblokkeerd</span>` : ""}
+            </span>
+            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+          </summary>
           <div class="user-row">
             <div class="user-info">
-              ${avatarHtml(profById[u.id] || u)}
               <div>
-                <b>${esc(u.display_name || "Naamloos")}</b>${me ? ` <span class="muted small">(jij)</span>` : ""}
-                <span class="username">${profById[u.id]?.username ? "@" + esc(profById[u.id].username) : `<span class="muted">nog geen gebruikersnaam</span>`}</span><br>
                 <span class="muted small">${esc(u.email)}</span><br>
                 <span class="small ${u.is_blocked ? "error" : "muted"}">${u.is_blocked ? "Geblokkeerd" : u.last_sign_in_at ? "Laatst ingelogd " + fmtDate(u.last_sign_in_at) : "Nog niet ingelogd"}</span>
                 ${u.has_mfa ? `<div class="user-tags"><span class="tag on">🔒 Tweestapsverificatie aan</span></div>` : u.is_admin ? `<div class="user-tags"><span class="tag warn">Tweestapsverificatie nog niet ingesteld</span></div>` : ""}
@@ -5555,10 +5584,16 @@ async function renderAdmin() {
               <button class="btn ghost small" data-block="${u.id}" data-blocked="${u.is_blocked}" data-name="${name}">${u.is_blocked ? "Deblokkeren" : "Blokkeren"}</button>
               <button class="btn danger small" data-remove="${u.id}" data-name="${name}">Verwijderen</button>
             </div>`}
-          </div>`;
+          </div>
+          </details>`;
         }).join("")}
+        </div>
       </div>
     </div>`;
+
+  view().querySelectorAll("[data-afold]").forEach(d => d.addEventListener("toggle", () => {
+    if (d.open) adminOpen.add(d.dataset.afold); else adminOpen.delete(d.dataset.afold);
+  }));
 
   $("#inviteForm").onsubmit = async e => {
     e.preventDefault();
