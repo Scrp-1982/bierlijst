@@ -740,7 +740,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-24.8";
+const APP_VERSION = "2026-10-24.9";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -865,6 +865,21 @@ document.addEventListener("input", e => {
   const cnt = ta.parentElement.querySelector(".char-count");
   if (cnt) { cnt.textContent = `${n} / ${limit}`; cnt.classList.toggle("full", n >= limit); }
 });
+
+// Zoeken: elk woord apart, in willekeurige volgorde; een deel van een woord is genoeg.
+// "Uiltje IPA" vindt dus ook "Uiltje Amber IPA" en "Uiltje NEIPA".
+function searchWords(text) {
+  return String(text || "").replace(/[,()%*\\]/g, " ").split(/\s+/).map(w => w.trim()).filter(w => w.length >= 2).slice(0, 6);
+}
+function withWords(query, text, fields = ["name", "brewery", "style"]) {
+  for (const w of searchWords(text)) query = query.or(fields.map(f => `${f}.ilike.%${w}%`).join(","));
+  return query;
+}
+const foldTxt = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+function matchesWords(text, hay) {
+  const h = foldTxt(hay);
+  return searchWords(text).every(w => h.includes(foldTxt(w)));
+}
 
 // Rechten voor de bierdatabase
 function canEditAll(beer) {
@@ -1179,7 +1194,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
           <div><b>${styles.length}</b><span>stijlen</span></div>
         </div>
         <div class="filters">
-          <input class="input search" type="search" id="fSearch" placeholder="Zoek op bier of brouwerij" aria-label="Zoeken">
+          <input class="input search" type="search" id="fSearch" placeholder="Zoek op naam, brouwerij of stijl, bijv. uiltje ipa" aria-label="Zoeken">
           <select class="input" id="fStyle" aria-label="Stijl">
             <option value="">Alle stijlen</option>
             ${styles.map(s => `<option>${esc(s)}</option>`).join("")}
@@ -1209,7 +1224,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
     const st = $("#fStyle").value;
     const sort = $("#fSort").value;
     let list = groups.filter(g =>
-      (!q || `${g.beer.name} ${g.beer.brewery || ""}`.toLowerCase().includes(q)) &&
+      (!q || matchesWords(q, `${g.beer.name} ${g.beer.brewery || ""} ${g.beer.style || ""}`)) &&
       (!st || g.beer.style === st));
     const by = {
       recent: (a, b) => b.last.localeCompare(a.last),
@@ -1743,7 +1758,7 @@ function renderCheckin() {
         <button class="btn ghost" type="button" id="typedCodeBtn">Opzoeken</button>
       </div>
       <div class="or">of</div>
-      <label class="field"><span>Zoek een bier</span><input class="input" id="beerSearch" type="search" placeholder="Naam of brouwerij" autocomplete="off"></label>
+      <label class="field"><span>Zoek een bier</span><input class="input" id="beerSearch" type="search" placeholder="Naam, brouwerij of stijl, bijv. uiltje ipa" autocomplete="off"></label>
       <div class="results" id="results"></div>
       <button class="btn ghost block" id="newBtn" type="button">Nieuw bier toevoegen</button>
     </div>`;
@@ -1875,7 +1890,7 @@ function renderCheckin() {
       if (q.length < 2) { own = []; draw(); return; }
       timer = setTimeout(async () => {
         const my = seq;
-        const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8);
+        const { data } = await withWords(sb.from("beers").select("*"), q).order("name").limit(8);
         if (my !== seq) return;
         own = data || [];
         ownStats = {};
@@ -1919,7 +1934,7 @@ function renderCheckin() {
       if (q.length < 2) { $("#linkResults").innerHTML = ""; return; }
       lt = setTimeout(async () => {
         const my = ++lseq;
-        const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).order("name").limit(8);
+        const { data } = await withWords(sb.from("beers").select("*"), q).order("name").limit(8);
         if (my !== lseq) return;
         found = data || [];
         $("#linkResults").innerHTML = found.length ? found.map(b => `
@@ -3357,7 +3372,7 @@ async function renderDatabase() {
     const q = $("#dbSearch").value.trim().replace(/[,()%*\\]/g, " ").trim();
     const filter = $("#dbFilter").value;
     let query = sb.from("beers").select("*").order("name");
-    if (q) query = query.or(`name.ilike.%${q}%,brewery.ilike.%${q}%,style.ilike.%${q}%,description.ilike.%${q}%`);
+    if (q) query = withWords(query, q, ["name", "brewery", "style", "description", "country"]);
     if (filter === "nocode") query = query.is("barcode", null);
     if (filter === "nophoto") query = query.is("image_path", null);
     if (filter === "review") query = query.eq("reviewed", false);
@@ -3585,7 +3600,7 @@ async function renderBeerForm(id) {
       if (q.length < 2) { $("#mergeResults").innerHTML = ""; return; }
       mt = setTimeout(async () => {
         const my = ++mseq;
-        const { data } = await sb.from("beers").select("*").or(`name.ilike.%${q}%,brewery.ilike.%${q}%`).neq("id", beer.id).order("name").limit(10);
+        const { data } = await withWords(sb.from("beers").select("*"), q).neq("id", beer.id).order("name").limit(10);
         if (my !== mseq) return;
         mfound = data || [];
         $("#mergeResults").innerHTML = mfound.length ? mfound.map(b => `
@@ -3684,15 +3699,14 @@ async function fetchBeersWithoutCode() {
     all = all.concat(data);
     if (data.length < 1000) break;
   }
-  return all.map(b => ({ ...b, _words: normTxt(`${b.name} ${b.brewery || ""} ${b.style || ""} ${b.description || ""}`).split(" ") }));
+  return all.map(b => ({ ...b, _hay: foldTxt(`${b.name} ${b.brewery || ""} ${b.style || ""} ${b.description || ""}`) }));
 }
 
 function localSearch(q, limit = 30) {
-  const toks = normTxt(q).split(" ").filter(Boolean);
+  const toks = searchWords(q).map(foldTxt);
   if (!toks.length) return bcState.beers.slice(0, limit);
   const out = [];
-  // Elk zoekwoord moet het begin van een woord zijn: "ij" vindt 't IJ en IJwit, niet alcoholvrij
-  for (const b of bcState.beers) { if (toks.every(t => b._words.some(w => w.startsWith(t)))) { out.push(b); if (out.length >= limit) break; } }
+  for (const b of bcState.beers) { if (toks.every(t => b._hay.includes(t))) { out.push(b); if (out.length >= limit) break; } }
   return out;
 }
 
@@ -3900,8 +3914,9 @@ async function handleBcScan(code) {
     draw([]);
     // Ook bieren die al een barcode hebben
     const qs = q.trim().replace(/[,()%*\\]/g, " ").trim();
-    const { data } = await sb.from("beers").select("id, name, brewery, style, abv, image_path")
-      .not("barcode", "is", null).or(`name.ilike.%${qs}%,brewery.ilike.%${qs}%`).order("name").limit(8);
+    const base = sb.from("beers").select("id, name, brewery, style, abv, image_path")
+      .not("barcode", "is", null);
+    const { data } = await withWords(base, qs).order("name").limit(8);
     if (my !== findSeq) return;
     draw(data || []);
   };
@@ -3976,7 +3991,7 @@ function mergeNewBeer(newId, name, brewery) {
       const words = $("#mnSearch").value.replace(/[,()%*\\]/g, " ").split(/\s+/).filter(w => w.length >= 2).slice(0, 4);
       if (!words.length) { $("#mnResults").innerHTML = ""; return; }
       let q = sb.from("beers").select("id, name, brewery, style, abv").neq("id", newId);
-      for (const w of words) q = q.or(`name.ilike.%${w}%,brewery.ilike.%${w}%`);
+      q = withWords(q, words.join(" "));
       const { data } = await q.order("name").limit(15);
       if (my !== seq || !$("#mnResults")) return;
       found = data || [];
@@ -4747,7 +4762,7 @@ async function renderProcess() {
     if (!words.length) { $("#pResults").innerHTML = `<p class="muted small">Typ minstens 2 tekens.</p>`; return; }
     $("#pResults").innerHTML = `<p class="muted small">Zoeken…</p>`;
     let query = sb.from("beers").select("*");
-    for (const w of words) query = query.or(`name.ilike.%${w}%,brewery.ilike.%${w}%,style.ilike.%${w}%,description.ilike.%${w}%`);
+    query = withWords(query, words.join(" "), ["name", "brewery", "style", "description"]);
     const { data } = await query.order("name").limit(40);
     if (my !== seq) return;
     results = data || [];
