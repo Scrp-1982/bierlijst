@@ -438,6 +438,13 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 @media (prefers-color-scheme: dark) { .src-line.web { background: #1E2C3A; } }
 .src-head { font-weight: 700; color: var(--hop); }
 .src-head.web { color: inherit; }
+.torch-btn {
+  position: absolute; top: 10px; right: 10px; z-index: 2; width: 44px; height: 44px; border-radius: 50%;
+  border: 0; display: grid; place-items: center; cursor: pointer;
+  background: rgba(0, 0, 0, .55); color: #fff; backdrop-filter: blur(4px);
+}
+.torch-btn svg { width: 22px; height: 22px; }
+.torch-btn.on { background: var(--gold); color: #1A1406; box-shadow: 0 0 0 3px rgba(255, 255, 255, .7); }
 .type-code { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.9rem; }
 .or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
@@ -803,7 +810,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-25.5";
+const APP_VERSION = "2026-10-25.6";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1820,6 +1827,7 @@ function releaseCamera() {
 }
 function pauseCamera(stream) {
   if (!stream) return;
+  setTorch(stream, false);
   stream.getTracks().forEach(t => { t.enabled = false; });
   camCache.stream = stream;
   clearTimeout(camCache.timer);
@@ -1840,6 +1848,29 @@ async function getCamera() {
 }
 // Gaat de app naar de achtergrond, dan de camera echt uitzetten
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && !state.scanner) releaseCamera(); });
+
+// Zaklamp tijdens het scannen
+async function setTorch(stream, on) {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return false;
+  try { await track.applyConstraints({ advanced: [{ torch: on }] }); return true; }
+  catch { return false; }
+}
+function bindTorch(stream) {
+  const btn = $("#torchBtn");
+  if (!btn) return;
+  let on = false;
+  btn.onclick = async e => {
+    e.preventDefault();
+    // Gewoon proberen: niet elke telefoon meldt vooraf of het kan
+    const ok = await setTorch(stream, !on);
+    if (!ok) return toast("De zaklamp kan op dit toestel niet vanuit de app worden aangezet.");
+    on = !on;
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", String(on));
+    btn.setAttribute("aria-label", on ? "Zaklamp uit" : "Zaklamp aan");
+  };
+}
 
 async function stopScanner() {
   const sc = state.scanner;
@@ -2356,7 +2387,10 @@ async function startScan(onCode = handleBarcode) {
   msg.textContent = "Houd de barcode in het kader. Recht of rechtop maakt niet uit.";
   btn.lastChild.textContent = " Stoppen met scannen";
   reader.hidden = false;
-  reader.innerHTML = `<video playsinline muted autoplay></video><div class="scan-frame" aria-hidden="true"></div>`;
+  reader.innerHTML = `<video playsinline muted autoplay></video><div class="scan-frame" aria-hidden="true"></div>
+    <button type="button" class="torch-btn" id="torchBtn" aria-pressed="false" aria-label="Zaklamp aan" title="Zaklamp">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.5 2 4 13.5h6.5L9 22l10-12.5h-6.6z"/></svg>
+    </button>`;
   const video = reader.querySelector("video");
 
   try {
@@ -2365,6 +2399,7 @@ async function startScan(onCode = handleBarcode) {
     state.scanner = { stream, timer: null };
     video.srcObject = stream;
     await video.play();
+    bindTorch(stream);
 
     const tick = async () => {
       if (!state.scanner) return;
