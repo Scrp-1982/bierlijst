@@ -740,8 +740,10 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-24.9";
+const APP_VERSION = "2026-10-25.1";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
+const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
 const SITE_URL = location.origin + location.pathname;
 
 const state = {
@@ -5610,6 +5612,80 @@ async function drawMfaStatus() {
 }
 
 // ---------------------------------------------------------------------
+// Meldingen en het getal op het app-icoon
+// ---------------------------------------------------------------------
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+let swReg = null;
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").then(r => { swReg = r; }).catch(() => {});
+}
+function urlB64ToUint8(b64) {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+// App geopend: getal op het icoon weg en teller op nul
+async function clearUnread() {
+  try { if (navigator.clearAppBadge) await navigator.clearAppBadge(); } catch {}
+  if (state.user) sb.rpc("reset_unread").then(() => {}, () => {});
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") clearUnread(); });
+
+async function currentPushSub() {
+  if (!pushSupported()) return null;
+  const reg = swReg || await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+async function enablePush() {
+  if (!pushSupported()) throw new Error("Deze browser ondersteunt geen meldingen.");
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") throw new Error("Je hebt meldingen niet toegestaan. Dat kun je later nog aanpassen in de instellingen van je telefoon.");
+  const reg = swReg || await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(VAPID_PUBLIC_KEY) });
+  const j = sub.toJSON();
+  const { error } = await sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, user_id: state.user.id });
+  if (error) throw error;
+}
+async function disablePush() {
+  const sub = await currentPushSub();
+  if (sub) {
+    await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+    try { await sub.unsubscribe(); } catch {}
+  }
+}
+async function drawPushStatus() {
+  const box = $("#pushStatus");
+  if (!box) return;
+  if (!pushSupported() || !isStandalone()) {
+    box.innerHTML = `<p>Meldingen werken alleen als de app op je beginscherm staat. Open <b>bierapp.mhavers.nl</b> in Safari, tik op de deelknop en kies <b>Zet op beginscherm</b>. Open de app daarna via het icoon en kom hier terug.</p>`;
+    return;
+  }
+  const sub = await currentPushSub();
+  const on = !!sub && Notification.permission === "granted";
+  box.innerHTML = on ? `
+      <p><b>Staat aan.</b> Je krijgt een melding en een getal op het app-icoon als iemand proost of reageert op jouw check-in.</p>
+      <details class="small"><summary><b>Alleen het getal, zonder meldingen op je scherm?</b></summary>
+        <p style="margin-top:6px">Ga op je iPhone naar <b>Instellingen → Berichtgeving → Bier App</b>. Zet daar <b>Toegangsscherm</b>, <b>Berichtgeving</b>, <b>Banners</b> en <b>Geluiden</b> uit, en laat <b>Badges</b> aan. Dan zie je alleen nog het getal op het icoon.</p>
+      </details>
+      <button class="btn ghost small" type="button" id="pushOff">Meldingen uitzetten</button>`
+    : `
+      <p>Krijg een melding en een getal op het app-icoon als iemand proost of reageert op jouw check-in.</p>
+      <button class="btn soft" type="button" id="pushOn">Meldingen aanzetten</button>
+      ${Notification.permission === "denied" ? `<p class="muted small">Meldingen zijn eerder geweigerd. Zet ze aan via <b>Instellingen → Berichtgeving → Bier App</b> op je telefoon.</p>` : ""}`;
+  const onBtn = $("#pushOn");
+  if (onBtn) onBtn.onclick = async () => {
+    onBtn.disabled = true;
+    try { await enablePush(); toast("Meldingen staan aan"); }
+    catch (ex) { toast(ex.message || String(ex)); }
+    drawPushStatus();
+  };
+  const offBtn = $("#pushOff");
+  if (offBtn) offBtn.onclick = async () => { await disablePush(); toast("Meldingen staan uit"); drawPushStatus(); };
+}
+
+// ---------------------------------------------------------------------
 // Wachtwoord wijzigen
 // ---------------------------------------------------------------------
 function passwordForm(forced, inFold = false) {
@@ -5752,6 +5828,8 @@ function renderProfile() {
 
       ${fold("wachtwoord", "Wachtwoord wijzigen", "", passwordForm(false, true))}
 
+      ${fold("meldingen", "Meldingen", "Een getal op het app-icoon bij proosts en reacties", `<div id="pushStatus"><p class="muted small">Status ophalen…</p></div>`)}
+
       ${fold("tweestap", "Tweestapsverificatie", "Extra beveiliging met een code van je telefoon", `<div id="mfaStatus"><p class="muted small">Status ophalen…</p></div>`)}
 
       ${p.is_admin ? fold("beheer", "Beheer", "Gebruikers, uitnodigingen en rechten", `
@@ -5797,6 +5875,7 @@ function renderProfile() {
   };
   bindPasswordForm(false);
   drawMfaStatus();
+  drawPushStatus();
 
   const oldAvatar = p.avatar_path;
   const removeOld = async () => {
@@ -5920,6 +5999,7 @@ window.addEventListener("hashchange", route);
   state.user = data.session?.user || null;
   if (state.user) await loadMe();
   route();
+  clearUnread();
   sb.auth.onAuthStateChange(async (event, session) => {
     const before = state.user?.id;
     state.user = session?.user || null;
