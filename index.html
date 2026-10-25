@@ -803,7 +803,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-25.4";
+const APP_VERSION = "2026-10-25.5";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1809,12 +1809,44 @@ const BarcodeScan = (() => {
   return { fromFile, fromVideo };
 })();
 
+// De camera blijft na een scan nog even op pauze staan, zodat de iPhone
+// bij de volgende scan niet opnieuw om toestemming vraagt
+const CAM_PAUSE_MS = 2 * 60 * 1000;
+const camCache = { stream: null, timer: null };
+function releaseCamera() {
+  clearTimeout(camCache.timer);
+  camCache.stream?.getTracks().forEach(t => t.stop());
+  camCache.stream = null;
+}
+function pauseCamera(stream) {
+  if (!stream) return;
+  stream.getTracks().forEach(t => { t.enabled = false; });
+  camCache.stream = stream;
+  clearTimeout(camCache.timer);
+  camCache.timer = setTimeout(releaseCamera, CAM_PAUSE_MS);
+}
+async function getCamera() {
+  const s = camCache.stream;
+  if (s && s.getVideoTracks().some(t => t.readyState === "live")) {
+    clearTimeout(camCache.timer);
+    s.getTracks().forEach(t => { t.enabled = true; });
+    return s;
+  }
+  releaseCamera();
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false,
+  });
+}
+// Gaat de app naar de achtergrond, dan de camera echt uitzetten
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && !state.scanner) releaseCamera(); });
+
 async function stopScanner() {
   const sc = state.scanner;
   if (!sc) return;
   state.scanner = null;
   clearTimeout(sc.timer);
-  sc.stream?.getTracks().forEach(t => t.stop());
+  pauseCamera(sc.stream);
   const r = $("#reader");
   if (r) { r.innerHTML = ""; r.hidden = true; }
 }
@@ -2329,10 +2361,7 @@ async function startScan(onCode = handleBarcode) {
 
   try {
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error("insecure");
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false,
-    });
+    const stream = await getCamera();
     state.scanner = { stream, timer: null };
     video.srcObject = stream;
     await video.play();
@@ -2357,10 +2386,10 @@ async function startScan(onCode = handleBarcode) {
     const t = String(ex?.name || ex?.message || ex);
     msg.textContent =
       /insecure/.test(t) || !window.isSecureContext ? "De camera werkt alleen via een https-adres. Open de app via https://." :
-      /NotAllowed|Permission/i.test(t) ? "De browser heeft geen toestemming voor de camera. Op een iPhone: Instellingen, Safari, Camera, kies Sta toe. Of gebruik de knop 'Foto van de barcode maken'." :
+      /NotAllowed|Permission/i.test(t) ? "De browser heeft geen toestemming voor de camera. Op een iPhone: Instellingen, Apps, Safari, Camera, kies Sta toe. Of typ de barcode in." :
       /NotFound|Overconstrained/i.test(t) ? "Er is geen camera gevonden op dit apparaat. Gebruik een telefoon, of zoek het bier op naam." :
       /NotReadable|in use/i.test(t) ? "De camera is in gebruik door een andere app. Sluit die app en probeer het opnieuw." :
-      `De camera kon niet worden gestart (${t}). Gebruik de knop 'Foto van de barcode maken', of zoek het bier op naam.`;
+      `De camera kon niet worden gestart (${t}). Typ de barcode in, of zoek het bier op naam.`;
   }
 }
 
