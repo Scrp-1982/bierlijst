@@ -650,6 +650,40 @@ dialog.lightbox img {
   dialog.lightbox[open] { animation: lbfade .18s ease-out; }
   @keyframes lbfade { from { opacity: 0; } }
 }
+/* Balk onderin */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 17;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+}
+.tabbar a {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  min-height: 48px; text-decoration: none; color: var(--muted); font-size: .68rem; font-weight: 600; border-radius: 12px;
+}
+.tabbar a svg { width: 24px; height: 24px; }
+.tabbar a.on { color: var(--hop); }
+.tabbar a.on .avatar { box-shadow: 0 0 0 2px var(--hop); }
+.tb-ic { position: relative; display: grid; place-items: center; height: 26px; }
+.tb-ic .avatar { width: 26px; height: 26px; font-size: .7rem; }
+.tb-badge {
+  position: absolute; top: -4px; right: -10px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--danger); color: #fff; font: 700 .68rem/18px var(--body); text-align: center;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+body.has-tabbar { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+body.has-tabbar .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+body.has-tabbar div.process-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
+/* Meldingen */
+.notif-list { display: grid; gap: 8px; }
+.notif {
+  display: flex; gap: 12px; align-items: center; padding: 12px; border-radius: var(--radius-lg);
+  background: var(--surface); border: 1px solid var(--line); cursor: pointer; overflow-wrap: anywhere;
+}
+.notif.new { border-color: var(--hop); background: var(--hop-soft); }
+.notif .grow { flex: 1; min-width: 0; }
+.notif-actions { display: flex; flex-direction: column; gap: 6px; }
+.brand #pageTitle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 52vw; }
 .toast {
   position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); z-index: 50;
   transform: translateX(-50%); max-width: calc(100vw - 32px);
@@ -695,7 +729,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
     </div>
     <a class="brand" href="#activiteit" id="brand">
       <svg viewBox="0 0 22 26" aria-hidden="true"><path d="M2 3h18l-2 21H4z" fill="var(--gold)"/><path d="M2 3h18l-.5 5H2.5z" fill="var(--surface)" stroke="var(--ink)" stroke-width="1.5"/><path d="M2 3h18l-2 21H4z" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"/></svg>
-      Bierlijst
+      <span id="pageTitle">Bierlijst</span>
     </a>
     <div id="topRight" class="top-right"></div>
   </div>
@@ -705,12 +739,9 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 
 <div class="backdrop" id="backdrop"></div>
 <nav class="drawer" id="drawer" aria-label="Hoofdmenu">
-  <a href="#lijst" data-tab="lijst"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12l-1.5 17h-9z"/><path d="M6.4 9h11.2"/></svg>Mijn bieren</a>
-  <a href="#activiteit" data-tab="activiteit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Activiteit</a>
   <a href="#verzamel" data-tab="verzamel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Snel scannen</a>
   <a href="#database" data-tab="database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Bierdatabase</a>
   <a href="#badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>Badges</a>
-  <a href="#vrienden" data-tab="vrienden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg>Vrienden</a>
   <a href="#profiel" data-tab="profiel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>Profiel</a>
   <div class="drawer-admin" id="adminGroup" hidden>
     <hr>
@@ -731,6 +762,25 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
   <img id="lbImg" alt="">
 </dialog>
 
+<nav class="tabbar" id="tabbar" aria-label="Snelmenu" hidden>
+  <a href="#activiteit" data-tab="activiteit">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>
+    <span>Tijdlijn</span>
+  </a>
+  <a href="#vrienden" data-tab="vrienden">
+    <span class="tb-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.4"/></svg><b class="tb-badge" id="friendsBadge" hidden></b></span>
+    <span>Vrienden</span>
+  </a>
+  <a href="#meldingen" data-tab="meldingen">
+    <span class="tb-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><b class="tb-badge" id="bellBadge" hidden></b></span>
+    <span>Meldingen</span>
+  </a>
+  <a href="#lijst" data-tab="lijst" aria-label="Mijn bieren">
+    <span class="tb-ic" id="tabAvatar"></span>
+    <span>Mijn bieren</span>
+  </a>
+</nav>
+
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <script>
@@ -740,7 +790,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-25.1";
+const APP_VERSION = "2026-10-25.2";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -910,7 +960,14 @@ function stars(r) {
   return `<span class="stars" style="--r:${Number(r)}" aria-label="${nf(r, 2)} van 5">★★★★★</span>`;
 }
 
+const PAGE_TITLES = {
+  activiteit: "Tijdlijn", lijst: "Mijn bieren", vrienden: "Vrienden", meldingen: "Meldingen", inchecken: "Inchecken",
+  verzamel: "Snel scannen", database: "Bierdatabase", badges: "Badges", profiel: "Profiel",
+  controleren: "Controleren", beheer: "Beheer",
+};
 function setTab(name) {
+  $("#pageTitle").textContent = (state.user && PAGE_TITLES[name]) || "Bierlijst";
+  document.querySelectorAll("#tabbar a").forEach(a => a.classList.toggle("on", a.dataset.tab === name));
   document.querySelector(".icon-btn.add")?.classList.toggle("on", name === "inchecken");
   document.querySelectorAll("#drawer a").forEach(a => {
     if (a.dataset.tab === name) a.setAttribute("aria-current", "page");
@@ -922,6 +979,9 @@ function setTab(name) {
 // Menu
 function setNav(loggedIn) {
   $("#menuBtn").hidden = !loggedIn;
+  $("#tabbar").hidden = !loggedIn;
+  document.body.classList.toggle("has-tabbar", !!loggedIn);
+  if (loggedIn) { $("#tabAvatar").innerHTML = avatarHtml(state.me, 26); updateBadges(); }
   if (!loggedIn) closeMenu();
   $("#adminGroup").hidden = !state.me?.is_admin;
   if (loggedIn && state.me?.is_admin) updateReviewCount();
@@ -1215,7 +1275,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
           ${glassSvg("var(--line)")}
           <h2>${own ? "Nog geen bieren" : "Nog niets ingecheckt"}</h2>
           <p class="muted">${own ? "Check je eerste bier in door de barcode te scannen of de naam op te zoeken." : "Zodra er bieren zijn ingecheckt, zie je ze hier."}</p>
-          ${own ? `<p style="margin-top:16px"><a class="btn" href="#inchecken">Eerste bier inchecken</a></p>` : ""}
+          ${own ? `<p class="muted" style="margin-top:12px">Tik op <b>+</b> rechtsboven om je eerste bier in te checken.</p>` : ""}
         </div>`}
     </div>`;
 
@@ -5078,7 +5138,7 @@ async function renderFeed() {
   }
   view().innerHTML = `
     <div class="stack">
-      <h1>Activiteit</h1>
+      <h1>Tijdlijn</h1>
       ${state.me?.is_admin ? `
       <div class="auth-tabs small-tabs" role="tablist">
         <button role="tab" type="button" data-scope="friends" aria-selected="${feedState.scope !== "all"}">Vrienden</button>
@@ -5086,7 +5146,7 @@ async function renderFeed() {
       </div>` : ""}
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
         <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
-      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen activiteit</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden.</p><p style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap"><a class="btn" href="#inchecken">Bier inchecken</a><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
+      : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen check-ins</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden. Tik op <b>+</b> rechtsboven om een bier in te checken.</p><p style="margin-top:16px"><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
     </div>`;
 
   view().querySelectorAll("[data-scope]").forEach(b => b.onclick = () => { feedState.scope = b.dataset.scope; renderFeed(); });
@@ -5184,6 +5244,99 @@ async function renderFeed() {
       const post = feedState.items.find(x => (x.comments || []).some(cm => cm.id === del.dataset.delcomment));
       post.comments = post.comments.filter(cm => cm.id !== del.dataset.delcomment);
       rerenderPost(post.id);
+    }
+  };
+}
+
+// ---------------------------------------------------------------------
+// Meldingen: proosts, reacties en vriendschapsverzoeken
+// ---------------------------------------------------------------------
+async function seenAt() {
+  const { data } = await sb.from("notif_state").select("seen_at").eq("user_id", state.user.id).maybeSingle();
+  return data?.seen_at || "1970-01-01T00:00:00Z";
+}
+async function fetchNotifications(limit = 60) {
+  const me = state.user.id;
+  const [ch, cm, fr] = await Promise.all([
+    sb.from("cheers").select("created_at, user_id, checkin_id, profile:profiles!cheers_user_id_fkey(id, display_name, avatar_path), checkin:checkins!inner(user_id, beer:beers(name))")
+      .eq("checkin.user_id", me).neq("user_id", me).order("created_at", { ascending: false }).limit(limit),
+    sb.from("comments").select("id, body, created_at, user_id, checkin_id, profile:profiles!comments_user_id_fkey(id, display_name, avatar_path), checkin:checkins!inner(user_id, beer:beers(name))")
+      .eq("checkin.user_id", me).neq("user_id", me).order("created_at", { ascending: false }).limit(limit),
+    sb.from("friendships").select("requester, created_at, req:profiles!friendships_requester_fkey(id, display_name, avatar_path)")
+      .eq("addressee", me).eq("status", "pending").order("created_at", { ascending: false }),
+  ]);
+  const list = [
+    ...(ch.data || []).map(x => ({ kind: "cheer", at: x.created_at, who: x.profile, beer: x.checkin?.beer?.name, checkin: x.checkin_id })),
+    ...(cm.data || []).map(x => ({ kind: "comment", at: x.created_at, who: x.profile, beer: x.checkin?.beer?.name, checkin: x.checkin_id, text: x.body })),
+    ...(fr.data || []).map(x => ({ kind: "friend", at: x.created_at, who: x.req, id: x.requester })),
+  ];
+  return list.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+}
+
+// Rode getallen bij Vrienden en het belletje
+async function updateBadges() {
+  if (!state.user) return;
+  try {
+    const me = state.user.id, since = await seenAt();
+    const [fr, ch, cm] = await Promise.all([
+      sb.from("friendships").select("requester", { count: "exact", head: true }).eq("addressee", me).eq("status", "pending"),
+      sb.from("cheers").select("checkin_id, checkin:checkins!inner(user_id)", { count: "exact", head: true }).eq("checkin.user_id", me).neq("user_id", me).gt("created_at", since),
+      sb.from("comments").select("id, checkin:checkins!inner(user_id)", { count: "exact", head: true }).eq("checkin.user_id", me).neq("user_id", me).gt("created_at", since),
+    ]);
+    const set = (el, n) => { el.textContent = n > 99 ? "99+" : String(n); el.hidden = !n; };
+    set($("#friendsBadge"), fr.count || 0);
+    set($("#bellBadge"), (ch.count || 0) + (cm.count || 0) + (fr.count || 0));
+  } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") updateBadges(); });
+
+async function renderNotifications() {
+  setTab("meldingen");
+  view().innerHTML = `<div class="loading">Meldingen ophalen…</div>`;
+  let items, since;
+  try { [items, since] = await Promise.all([fetchNotifications(), seenAt()]); }
+  catch (err) { view().innerHTML = `<p class="error">Laden lukte niet: ${esc(err.message)}</p>`; return; }
+  const line = n => {
+    const name = `<b>${esc(n.who?.display_name || "Iemand")}</b>`;
+    const what = n.kind === "cheer" ? `🍻 ${name} proost mee op je <b>${esc(n.beer || "bier")}</b>`
+      : n.kind === "comment" ? `💬 ${name} reageerde op je <b>${esc(n.beer || "bier")}</b>: “${esc(n.text || "")}”`
+      : `👋 ${name} wil je vriend worden`;
+    const fresh = n.at > since;
+    return `
+      <div class="notif ${fresh ? "new" : ""}" ${n.kind !== "friend" ? `data-goto="${n.checkin}"` : ""}>
+        ${avatarHtml(n.who, 40)}
+        <div class="grow"><p>${what}</p><p class="muted small">${relTime(n.at)}</p></div>
+        ${n.kind === "friend" ? `<div class="notif-actions"><button class="btn small" data-accept="${n.id}">Accepteren</button><button class="btn ghost small" data-decline="${n.id}">Afwijzen</button></div>` : ""}
+      </div>`;
+  };
+  view().innerHTML = `
+    <div class="stack">
+      <h1>Meldingen</h1>
+      ${items.length ? `<div class="notif-list">${items.map(line).join("")}</div>`
+        : `<div class="panel empty"><h2>Nog geen meldingen</h2><p class="muted">Hier zie je wie er proost of reageert op jouw check-ins, en nieuwe vriendschapsverzoeken.</p></div>`}
+    </div>`;
+  // Alles is nu gezien
+  sb.rpc("mark_notifications_seen").then(() => updateBadges(), () => {});
+  try { if (navigator.clearAppBadge) navigator.clearAppBadge(); } catch {}
+
+  view().onclick = async e => {
+    const acc = e.target.closest("[data-accept]"), dec = e.target.closest("[data-decline]");
+    if (acc || dec) {
+      const other = (acc || dec).dataset.accept || (acc || dec).dataset.decline;
+      (acc || dec).disabled = true;
+      const me = state.user.id;
+      const { error } = acc
+        ? await sb.from("friendships").update({ status: "accepted", accepted_at: new Date().toISOString() }).eq("requester", other).eq("addressee", me)
+        : await sb.from("friendships").delete().eq("requester", other).eq("addressee", me);
+      if (error) { (acc || dec).disabled = false; return toast(error.message); }
+      toast(acc ? "Jullie zijn nu vrienden. Proost!" : "Verzoek afgewezen");
+      _friendCache.at = 0;
+      return renderNotifications();
+    }
+    const go = e.target.closest("[data-goto]");
+    if (go) {
+      feedState.open.add(go.dataset.goto);   // reacties van die check-in alvast openklappen
+      location.hash = "activiteit";
     }
   };
 }
@@ -5320,6 +5473,8 @@ async function renderFriends() {
       if (!error) toast("Bijgewerkt");
     }
     if (error) { btn.disabled = false; return toast("Dat lukte niet: " + error.message); }
+    _friendCache.at = 0;
+    updateBadges();
     renderFriends();
   };
 }
@@ -5958,6 +6113,7 @@ const publicUser = params.get("u");
 
 async function route() {
   view().classList.remove("wide");
+  if (state.user) updateBadges();
   closeLightbox();
   if ($("#dlg").open) closeDialog();
   view().onclick = null;
@@ -5974,6 +6130,7 @@ async function route() {
   const h = location.hash.slice(1) || "activiteit";
   if (h === "inchecken") return renderCheckin();
   if (h === "vrienden") return renderFriends();
+  if (h === "meldingen") return renderNotifications();
   if (h === "tweestap") return renderMfaSetup(false);
   if (h === "activiteit") return renderFeed();
   if (h === "badges") return renderBadges();
