@@ -571,6 +571,9 @@ details.fold[open] > summary { border-bottom: 1px solid var(--line); border-radi
 .cheer-btn.on .cheer-icon, .cheer-btn.own .cheer-icon { filter: none; opacity: 1; }
 .cheer-btn.own { cursor: default; border-style: dashed; }
 .cheer-btn.on { background: var(--gold); border-color: var(--gold); color: #2A1E05; }
+.comment-btn .cheer-icon { filter: none; opacity: .85; }
+.comment-btn.on { background: var(--hop-soft); border-color: var(--hop); color: var(--ink); }
+.post-actions .post-meta { margin-left: 4px; }
 .cheer-btn:disabled { cursor: progress; opacity: .6; }
 @media (prefers-reduced-motion: no-preference) {
   .cheer-btn.pop { animation: pop .35s ease-out; }
@@ -724,7 +727,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-24.4";
+const APP_VERSION = "2026-10-24.5";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const SITE_URL = location.origin + location.pathname;
 
@@ -4816,7 +4819,7 @@ async function renderProcess() {
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
-const feedState = { items: [], done: false, ids: [], scope: "friends" };
+const feedState = { items: [], done: false, ids: [], scope: "friends", open: new Set() };
 
 function relTime(iso) {
   const rtf = new Intl.RelativeTimeFormat("nl", { numeric: "auto" });
@@ -4862,7 +4865,7 @@ function postHtml(c) {
       ${c.photo_path ? `<button type="button" class="post-photo zoomable" data-zoom="${esc(photoUrl(c.photo_path))}" aria-label="Foto groot bekijken"><img src="${esc(photoUrl(c.photo_path))}" alt="Foto van ${esc(b.name || "het bier")}" loading="lazy"></button>` : ""}
       ${cheerHtml(c, mine)}
       ${state.me?.is_admin && !mine ? `<div class="mod-row"><button type="button" class="btn ghost small" data-moderate="${c.id}">Beheer</button></div>` : ""}
-      <div class="comments">
+      <div class="comments" ${feedState.open.has(c.id) ? "" : "hidden"}>
         ${(c.comments || []).map(cm => `
           <div class="comment">
             ${avatarHtml(cm.profile)}
@@ -4899,6 +4902,7 @@ function cheerHtml(c, mine) {
       ${mine
         ? `<span class="cheer-btn own" title="${n ? `${n} ${n === 1 ? "proost" : "proosts"} ontvangen` : "Nog geen proosts"}" aria-label="${n} proosts ontvangen"><span class="cheer-icon" aria-hidden="true">🍻</span>${n ? `<b>${n}</b>` : ""}</span>`
         : `<button type="button" class="cheer-btn ${iCheered ? "on" : ""}" data-cheer="${c.id}" aria-pressed="${iCheered}" aria-label="${iCheered ? "Proost intrekken" : "Proost"}" title="${iCheered ? "Proost intrekken" : "Proost!"}"><span class="cheer-icon" aria-hidden="true">🍻</span>${n ? `<b>${n}</b>` : ""}</button>`}
+      <button type="button" class="cheer-btn comment-btn ${feedState.open.has(c.id) ? "on" : ""}" data-togglecomments="${c.id}" aria-expanded="${feedState.open.has(c.id)}" aria-label="${(c.comments || []).length} reacties, ${feedState.open.has(c.id) ? "verbergen" : "bekijken of reageren"}" title="Reacties"><span class="cheer-icon" aria-hidden="true">💬</span>${(c.comments || []).length ? `<b>${(c.comments || []).length}</b>` : ""}</button>
       ${who ? `<span class="post-meta">${esc(who)}</span>` : ""}
     </div>`;
 }
@@ -5045,6 +5049,16 @@ async function renderFeed() {
       e.preventDefault();
       const c = feedState.items.find(x => x.id === open.dataset.open);
       if (c?.beer) showBeer({ beer: c.beer, checkins: [c], avg: c.rating, photo: c.photo_path || c.beer.image_path }, { own: c.user_id === state.user.id });
+      return;
+    }
+    const tg = e.target.closest("[data-togglecomments]");
+    if (tg) {
+      const id = tg.dataset.togglecomments;
+      if (feedState.open.has(id)) feedState.open.delete(id); else feedState.open.add(id);
+      rerenderPost(id);
+      // Alleen direct het toetsenbord openen als er nog geen reacties zijn om te lezen
+      const post = feedState.items.find(x => x.id === id);
+      if (feedState.open.has(id) && !(post?.comments || []).length) document.querySelector(`[data-commentform="${id}"] textarea`)?.focus({ preventScroll: true });
       return;
     }
     const mod = e.target.closest("[data-moderate]");
