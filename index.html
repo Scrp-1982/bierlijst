@@ -362,6 +362,14 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 .friend-line:first-child { border-top: 0; }
 .friend-line .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .friend-score { display: flex; align-items: center; gap: 6px; flex: none; }
+.friend-checkins { display: grid; gap: 6px; padding: 0 0 10px 52px; }
+.fc-row { display: flex; align-items: center; gap: 10px; }
+.fc-row .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-photo { width: 44px; height: 44px; border-radius: 8px; overflow: hidden; flex: none; }
+.fc-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.fc-none { background: var(--paper); border: 1px dashed var(--line); }
+.fc-score { display: flex; align-items: center; gap: 4px; flex: none; font-size: .9rem; }
+.fc-score .stars svg, .fc-score .star { width: 13px; height: 13px; }
 .linkish { appearance: none; border: 0; background: none; padding: 0; color: var(--hop); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
 .code-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .code-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 12px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -810,7 +818,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-25.6";
+const APP_VERSION = "2026-10-28.1";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -2322,7 +2330,7 @@ async function statsForBeers(beerIds) {
   const ids = [state.user.id, ...(await cachedFriendIds())];
   const { data, error } = await sb
     .from("checkins")
-    .select("beer_id, user_id, rating, drunk_at, tz, profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path)")
+    .select("id, beer_id, user_id, rating, drunk_at, tz, photo_path, serving, profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path)")
     .in("beer_id", beerIds)
     .in("user_id", ids)
     .order("drunk_at", { ascending: false });
@@ -2351,10 +2359,18 @@ function showFriendsDialog(beer, st) {
       <div class="friend-line">
         ${avatarHtml(me ? state.me : profile, 40)}
         <div class="grow">
-          <b>${me ? "Jij" : esc(profile?.display_name || "Iemand")}</b> <span class="muted small">${list.length}×</span><br>
-          <span class="muted small">Laatst op ${fmtDate(list[0].drunk_at, list[0].tz)}</span>
+          <b>${me ? "Jij" : esc(profile?.display_name || "Iemand")}</b><br>
+          <span class="muted small">${list.length === 1 ? "1 keer gedronken" : `${list.length} keer gedronken, gemiddeld`}</span>
         </div>
         <div class="friend-score">${a != null ? `${stars(a)}<b>${nf(a, 2)}</b>` : `<span class="muted small">Geen score</span>`}</div>
+      </div>
+      <div class="friend-checkins">
+        ${list.map(c => `
+          <div class="fc-row">
+            ${c.photo_path ? `<button type="button" class="zoomable fc-photo" data-zoom="${esc(photoUrl(c.photo_path))}" aria-label="Foto groot bekijken"><img src="${esc(photoUrl(c.photo_path))}" alt="" loading="lazy"></button>` : `<span class="fc-photo fc-none" aria-hidden="true"></span>`}
+            <span class="grow small">${fmtDate(c.drunk_at, c.tz)}${c.serving ? `, ${esc(c.serving)}` : ""}</span>
+            <span class="fc-score">${c.rating != null ? `${stars(Number(c.rating))}<b>${nf(Number(c.rating), 2)}</b>` : `<span class="muted small">geen score</span>`}</span>
+          </div>`).join("")}
       </div>`;
   };
   const friends = [...(st?.friends.values() || [])].sort((x, y) => y.list.length - x.list.length);
@@ -3488,6 +3504,7 @@ async function renderDatabase() {
     </div>`;
 
   let items = [], seq = 0;
+  const dbFriends = {};
   const rowHtml = b => `
     <button type="button" class="db-row" data-dbbeer="${b.id}">
       ${photoBlock(b.image_path, b.style)}
@@ -3500,6 +3517,7 @@ async function renderDatabase() {
         </span>
         <span class="tags">
           ${myCount[b.id] ? `<span class="tag on">Jij: ${myCount[b.id]}×</span>` : ""}
+          ${dbFriends[b.id]?.friends.size ? `<span class="tag friends" role="button" tabindex="0" data-dbfriends="${b.id}">👥 ${dbFriends[b.id].friends.size} ${dbFriends[b.id].friends.size === 1 ? "vriend" : "vrienden"}</span>` : ""}
           ${b.barcode ? "" : `<span class="tag">Geen barcode</span>`}
           ${!b.style || b.abv == null || !b.country ? `<span class="tag">Onvolledig</span>` : ""}
           ${b.reviewed === false ? `<span class="tag warn">Te controleren</span>` : ""}
@@ -3525,6 +3543,14 @@ async function renderDatabase() {
     items = append ? items.concat(data) : data;
     $("#dbList").innerHTML = items.length ? items.map(rowHtml).join("") : `<p class="muted">Geen bieren gevonden.${q ? ` <a href="#database/nieuw">Voeg “${esc(q)}” toe</a>.` : ""}</p>`;
     $("#dbMore").hidden = data.length < DB_PAGE;
+    // Hoeveel verschillende vrienden hebben deze bieren gedronken?
+    const need = data.map(b => b.id).filter(id => !(id in dbFriends));
+    for (let i = 0; i < need.length; i += 60) {
+      const st = await statsForBeers(need.slice(i, i + 60));
+      for (const id of need.slice(i, i + 60)) dbFriends[id] = st[id] || { mine: [], friends: new Map() };
+    }
+    if (my !== seq) return;
+    if (need.length) $("#dbList").innerHTML = items.length ? items.map(rowHtml).join("") : $("#dbList").innerHTML;
   };
   let t;
   $("#dbSearch").oninput = () => { clearTimeout(t); t = setTimeout(() => load(false), 300); };
@@ -3533,6 +3559,11 @@ async function renderDatabase() {
   $("#dbExport").onclick = openExportDialog;
   if ($("#dbImport")) $("#dbImport").onclick = openImportDialog;
   $("#dbList").onclick = e => {
+    const fr = e.target.closest("[data-dbfriends]");
+    if (fr) {
+      e.stopPropagation();
+      return showFriendsDialog(items.find(b => b.id === fr.dataset.dbfriends), dbFriends[fr.dataset.dbfriends]);
+    }
     const r = e.target.closest("[data-dbbeer]");
     if (r) showDbBeer(items.find(b => b.id === r.dataset.dbbeer));
   };
