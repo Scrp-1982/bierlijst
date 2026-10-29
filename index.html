@@ -818,7 +818,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.1";
+const APP_VERSION = "2026-10-28.2";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -5108,11 +5108,12 @@ function relTime(iso) {
   return "zojuist";
 }
 
-async function fetchFeed(from) {
+async function fetchFeed(from, onlyId = null) {
   let q = sb
     .from("checkins")
     .select("*, beer:beers(*), profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles!comments_user_id_fkey(id, display_name, avatar_path)), cheers(user_id, profile:profiles!cheers_user_id_fkey(id, display_name))");
-  if (!(feedState.scope === "all" && state.me?.is_admin)) q = q.in("user_id", feedState.ids);
+  if (onlyId) q = q.eq("id", onlyId);
+  else if (!(feedState.scope === "all" && state.me?.is_admin)) q = q.in("user_id", feedState.ids);
   const { data, error } = await q
     .order("drunk_at", { ascending: false })
     .order("id", { ascending: false })
@@ -5234,27 +5235,29 @@ function rerenderPost(id) {
   if (c && el) el.outerHTML = postHtml(c);
 }
 
-async function renderFeed() {
+async function renderFeed(onlyId = null) {
   setTab("activiteit");
   view().innerHTML = `<div class="loading">Activiteit ophalen…</div>`;
   try {
     feedState.ids = [state.user.id, ...(await friendIds())];
-    feedState.items = await fetchFeed(0);
-    feedState.done = feedState.items.length < FEED_PAGE;
+    feedState.items = await fetchFeed(0, onlyId);
+    feedState.done = onlyId ? true : feedState.items.length < FEED_PAGE;
+    if (onlyId) feedState.open.add(onlyId);   // reacties meteen open
   } catch (err) {
     view().innerHTML = `<p class="error">Activiteit kon niet worden geladen: ${esc(err.message)}</p>`;
     return;
   }
   view().innerHTML = `
     <div class="stack">
-      <h1>Tijdlijn</h1>
-      ${state.me?.is_admin ? `
+      ${onlyId ? `<p><a href="#activiteit" class="small">← Naar de hele tijdlijn</a></p><h1>Check-in</h1>` : `<h1>Tijdlijn</h1>`}
+      ${state.me?.is_admin && !onlyId ? `
       <div class="auth-tabs small-tabs" role="tablist">
         <button role="tab" type="button" data-scope="friends" aria-selected="${feedState.scope !== "all"}">Vrienden</button>
         <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Beheer</button>
       </div>` : ""}
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
         <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
+      : onlyId ? `<div class="panel empty"><h2>Deze check-in bestaat niet meer</h2><p class="muted">Misschien is hij verwijderd.</p></div>`
       : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen check-ins</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden. Tik op <b>+</b> rechtsboven om een bier in te checken.</p><p style="margin-top:16px"><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
     </div>`;
 
@@ -5443,10 +5446,7 @@ async function renderNotifications() {
       return renderNotifications();
     }
     const go = e.target.closest("[data-goto]");
-    if (go) {
-      feedState.open.add(go.dataset.goto);   // reacties van die check-in alvast openklappen
-      location.hash = "activiteit";
-    }
+    if (go) location.hash = "checkin/" + go.dataset.goto;
   };
 }
 
@@ -6264,6 +6264,7 @@ async function route() {
   if (h === "meldingen") return renderNotifications();
   if (h === "tweestap") return renderMfaSetup(false);
   if (h === "activiteit") return renderFeed();
+  if (h.startsWith("checkin/")) return renderFeed(h.slice(8));
   if (h === "badges") return renderBadges();
   if (h === "database") return renderDatabase();
   if (h === "verzamel") return renderCollect();
