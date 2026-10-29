@@ -457,6 +457,13 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .dup-side.keep { border-color: var(--hop); background: var(--hop-soft); }
 .dup-side input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--hop); }
 .dup-choice { display: flex; gap: 8px; flex-wrap: wrap; }
+.dup-choice .btn.on[data-choice="delete"] { box-shadow: 0 0 0 3px var(--gold); }
+.dup-pair.choice-delete { border-color: var(--danger); }
+.dup-orphan { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dup-cands { display: grid; gap: 4px; max-height: 260px; overflow-y: auto; }
+.dup-cand { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.dup-cand.keep { border-color: var(--hop); background: var(--hop-soft); }
+.dup-cand input { accent-color: var(--hop); }
 .dup-choice .btn.on[data-choice="merge"] { box-shadow: 0 0 0 3px var(--gold); }
 .dup-choice .btn.on[data-choice="apart"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .auth-tabs.small-tabs { grid-auto-flow: column; grid-auto-columns: 1fr; }
@@ -849,7 +856,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.5";
+const APP_VERSION = "2026-10-28.6";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -4401,9 +4408,17 @@ function findDuplicatePairs(beers, notDup) {
   for (const x of items) { if (!x.core) continue; if (!byCore.has(x.core)) byCore.set(x.core, []); byCore.get(x.core).push(x); }
   for (const list of byCore.values()) {
     const none = list.filter(x => !x.bk), some = list.filter(x => x.bk);
-    for (const x of none) for (const y of some) add(x.b, y.b, 0.9, "Zelfde naam; bij één bier ontbreekt de brouwerij");
+    for (const x of none) {
+      const cands = some.map(y => y.b).filter(b => {
+        const k = x.b.id < b.id ? x.b.id + "|" + b.id : b.id + "|" + x.b.id;
+        return !notDup.has(k);
+      });
+      if (cands.length === 1) add(x.b, cands[0], 0.9, "Zelfde naam; bij één bier ontbreekt de brouwerij");
+      else if (cands.length > 1) pairs.push({ orphan: x.b, cands, score: 0.9, why: `Bier zonder brouwerij lijkt op ${cands.length} bieren` });
+    }
   }
-  return pairs.sort((p, q) => q.score - p.score || (p.a.name || "").localeCompare(q.a.name || "", "nl"));
+  const nm = p => (p.a || p.orphan).name || "";
+  return pairs.sort((p, q) => q.score - p.score || nm(p).localeCompare(nm(q), "nl"));
 }
 
 async function renderDuplicates() {
@@ -4438,7 +4453,7 @@ async function runDuplicateSearch() {
   if (!pairs.length) { out.innerHTML = `<div class="panel empty"><h2>Geen dubbele bieren gevonden</h2><p class="muted">Proost!</p></div>`; return; }
 
   // Check-ins en barcodes tellen, om het beste bier voor te stellen
-  const ids = [...new Set(pairs.flatMap(p => [p.a.id, p.b.id]))];
+  const ids = [...new Set(pairs.flatMap(p => p.orphan ? [p.orphan.id, ...p.cands.map(c => c.id)] : [p.a.id, p.b.id]))];
   const ck = {}, codes = {};
   for (let i = 0; i < ids.length; i += 100) {
     const part = ids.slice(i, i + 100);
@@ -4451,7 +4466,14 @@ async function runDuplicateSearch() {
   }
   const weight = b => (ck[b.id] || 0) * 10 + (codes[b.id] || 0) * 3 + (b.image_path ? 2 : 0) + (b.untappd_id ? 1 : 0)
     + ["style", "abv", "country", "description"].filter(f => b[f] != null && b[f] !== "").length;
-  pairs.forEach((p, i) => { p.i = i; p.keep = weight(p.a) >= weight(p.b) ? "a" : "b"; p.choice = ""; });
+  pairs.forEach((p, i) => {
+    p.i = i; p.choice = "";
+    if (p.orphan) { p.target = null; return; }
+    p.keep = weight(p.a) >= weight(p.b) ? "a" : "b";
+    // Mag het bier zonder brouwerij en zonder check-ins gewoon weg?
+    const lone = [p.a, p.b].find(b => !b.brewery && !ck[b.id]);
+    p.deletable = lone || null;
+  });
 
   const side = (p, w) => {
     const b = p[w];
@@ -4471,13 +4493,31 @@ async function runDuplicateSearch() {
   };
   out.innerHTML = `
     <p class="muted small">${all.length} ${all.length === 1 ? "mogelijk dubbel paar" : "mogelijk dubbele paren"} gevonden${all.length > pairs.length ? `; de ${pairs.length} meest waarschijnlijke staan hieronder` : ""}. Het bier met het bolletje blijft; het andere gaat erin op.</p>
-    <div class="dup-list">${pairs.map(p => `
+    <div class="dup-list">${pairs.map(p => p.orphan ? `
+      <div class="panel dup-pair" data-pair="${p.i}">
+        <p class="small muted">${esc(p.why)}</p>
+        <div class="dup-orphan">
+          <b>${esc(p.orphan.name)}</b> <span class="muted small">zonder brouwerij${p.orphan.style ? `, ${esc(p.orphan.style)}` : ""}</span>
+          <span class="tag ${ck[p.orphan.id] ? "on" : ""}">${ck[p.orphan.id] || 0} check-ins</span>
+        </div>
+        <p class="small" style="margin:0">Samenvoegen met:</p>
+        <div class="dup-cands">${p.cands.map(c => `
+          <label class="dup-cand"><input type="radio" name="tgt${p.i}" value="${c.id}">
+            <span><b>${esc(c.name)}</b> <span class="muted small">${esc([c.brewery, c.abv != null ? nf(c.abv) + "%" : ""].filter(Boolean).join(", "))}</span>${ck[c.id] ? ` <span class="tag on">${ck[c.id]} check-ins</span>` : ""}</span>
+          </label>`).join("")}</div>
+        <div class="dup-choice" role="group" aria-label="Wat moet er gebeuren?">
+          ${!ck[p.orphan.id] ? `<button type="button" class="btn danger small" data-choice="delete">Verwijderen</button>` : ""}
+          <button type="button" class="btn small" data-choice="merge">Samenvoegen met gekozen bier</button>
+          <button type="button" class="btn ghost small" data-choice="apart">Apart houden</button>
+        </div>
+      </div>` : `
       <div class="panel dup-pair" data-pair="${p.i}">
         <p class="small muted">${esc(p.why)}${p.score < 1 ? ` (${Math.round(p.score * 100)}% gelijk)` : ""}</p>
         <div class="dup-sides">${side(p, "a")}${side(p, "b")}</div>
         <div class="dup-choice" role="group" aria-label="Wat moet er gebeuren?">
           <button type="button" class="btn small" data-choice="merge">Samenvoegen</button>
           <button type="button" class="btn ghost small" data-choice="apart">Apart houden</button>
+          ${p.deletable ? `<button type="button" class="btn danger small" data-choice="delete">“${esc(p.deletable.name)}” zonder brouwerij verwijderen</button>` : ""}
         </div>
       </div>`).join("")}</div>
     <div class="process-bar dup-bar">
@@ -4486,15 +4526,17 @@ async function runDuplicateSearch() {
     </div>`;
 
   const sum = () => {
-    const m = pairs.filter(p => p.choice === "merge").length, a = pairs.filter(p => p.choice === "apart").length;
-    $("#dupSum").textContent = m || a ? `${m} samenvoegen, ${a} apart houden` : "Nog niets gekozen";
-    $("#dupGo").disabled = !(m || a);
+    const m = pairs.filter(p => p.choice === "merge").length, a = pairs.filter(p => p.choice === "apart").length, d = pairs.filter(p => p.choice === "delete").length;
+    $("#dupSum").textContent = m || a || d ? [m && `${m} samenvoegen`, a && `${a} apart houden`, d && `${d} verwijderen`].filter(Boolean).join(", ") : "Nog niets gekozen";
+    $("#dupGo").disabled = !(m || a || d);
   };
   out.onclick = e => {
     const c = e.target.closest("[data-choice]");
     if (!c) return;
     const box = c.closest("[data-pair]"), p = pairs[+box.dataset.pair];
+    if (p.orphan && c.dataset.choice === "merge" && !p.target && p.choice !== "merge") return toast("Kies eerst met welk bier je wilt samenvoegen.");
     p.choice = p.choice === c.dataset.choice ? "" : c.dataset.choice;   // nogmaals tikken = keuze weg
+    box.classList.toggle("choice-delete", p.choice === "delete");
     box.classList.toggle("choice-merge", p.choice === "merge");
     box.classList.toggle("choice-apart", p.choice === "apart");
     box.querySelectorAll("[data-choice]").forEach(x => x.classList.toggle("on", x.dataset.choice === p.choice));
@@ -4504,33 +4546,48 @@ async function runDuplicateSearch() {
     const r = e.target.closest("input[type=radio]");
     if (!r) return;
     const box = r.closest("[data-pair]"), p = pairs[+box.dataset.pair];
+    if (p.orphan) {
+      p.target = r.value;
+      box.querySelectorAll(".dup-cand").forEach(l => l.classList.toggle("keep", l.querySelector("input").checked));
+      return;
+    }
     p.keep = r.value;
     box.querySelectorAll(".dup-side").forEach(l => l.classList.toggle("keep", l.querySelector("input").checked));
   };
   $("#dupGo").onclick = async () => {
-    const merges = pairs.filter(p => p.choice === "merge"), aparts = pairs.filter(p => p.choice === "apart");
+    const merges = pairs.filter(p => p.choice === "merge"), aparts = pairs.filter(p => p.choice === "apart"), dels = pairs.filter(p => p.choice === "delete");
     const ok = await confirmDelete("Verwerken?",
-      `<p>${merges.length ? `<b>${merges.length}</b> ${merges.length === 1 ? "paar wordt" : "paren worden"} samengevoegd: check-ins, foto’s, reacties, proosts en barcodes gaan naar het bier dat blijft.` : ""}
-       ${aparts.length ? `<br><b>${aparts.length}</b> ${aparts.length === 1 ? "paar blijft" : "paren blijven"} apart en ${aparts.length === 1 ? "komt" : "komen"} niet meer terug.` : ""}</p>`,
+      `<p>${merges.length ? `<b>${merges.length}</b> ${merges.length === 1 ? "keer" : "keer"} samenvoegen: check-ins, foto’s, reacties, proosts en barcodes gaan naar het bier dat blijft.` : ""}
+       ${dels.length ? `<br><b>${dels.length}</b> ${dels.length === 1 ? "bier" : "bieren"} zonder brouwerij en zonder check-ins ${dels.length === 1 ? "wordt" : "worden"} verwijderd: ${dels.map(p => `“${esc((p.orphan || p.deletable).name)}”`).join(", ")}.` : ""}
+       ${aparts.length ? `<br><b>${aparts.length}</b> ${aparts.length === 1 ? "keuze blijft" : "keuzes blijven"} apart en ${aparts.length === 1 ? "komt" : "komen"} niet meer terug.` : ""}</p>`,
       "Ja, verwerken");
     if (!ok) return;
     $("#dupGo").disabled = true;
     const gone = new Set();
     let done = 0, failed = [];
+    for (const p of dels) {
+      const b = p.orphan || p.deletable;
+      if (gone.has(b.id)) continue;
+      const { error } = await sb.from("beers").delete().eq("id", b.id);
+      if (error) failed.push(`${b.name}: ${error.message}`); else gone.add(b.id);
+    }
     for (const p of merges) {
-      const keep = p[p.keep], remove = p[p.keep === "a" ? "b" : "a"];
+      const keep = p.orphan ? p.cands.find(c => c.id === p.target) : p[p.keep];
+      const remove = p.orphan ? p.orphan : p[p.keep === "a" ? "b" : "a"];
       if (gone.has(keep.id) || gone.has(remove.id)) { failed.push(`${remove.name}: een van beide is al samengevoegd; zoek opnieuw`); continue; }
       const { error } = await sb.rpc("admin_merge_beers", { keep: keep.id, remove: remove.id });
       if (error) failed.push(`${remove.name}: ${error.message}`); else { gone.add(remove.id); done++; }
       $("#dupSum").textContent = `Samenvoegen… ${done} van ${merges.length}`;
     }
-    const rows = aparts.filter(p => !gone.has(p.a.id) && !gone.has(p.b.id))
-      .map(p => p.a.id < p.b.id ? { beer_a: p.a.id, beer_b: p.b.id } : { beer_a: p.b.id, beer_b: p.a.id });
+    const pairRow = (x, y) => x.id < y.id ? { beer_a: x.id, beer_b: y.id } : { beer_a: y.id, beer_b: x.id };
+    const rows = aparts.flatMap(p => p.orphan ? p.cands.map(c => [p.orphan, c]) : [[p.a, p.b]])
+      .filter(([x, y]) => !gone.has(x.id) && !gone.has(y.id))
+      .map(([x, y]) => pairRow(x, y));
     if (rows.length) {
       const { error } = await sb.from("beer_not_duplicates").upsert(rows, { onConflict: "beer_a,beer_b", ignoreDuplicates: true });
       if (error) failed.push("Apart houden opslaan lukte niet: " + error.message);
     }
-    toast(`${done} samengevoegd, ${rows.length} apart gehouden${failed.length ? `, ${failed.length} lukte niet` : ""}`);
+    toast(`${done} samengevoegd, ${dels.length} verwijderd, ${aparts.length} apart gehouden${failed.length ? `, ${failed.length} lukte niet` : ""}`);
     if (failed.length) alert("Niet gelukt:\n\n" + failed.join("\n"));
     runDuplicateSearch();
   };
