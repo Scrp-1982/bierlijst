@@ -492,6 +492,7 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 }
 .segmented input:checked + span { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .segmented input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 2px; }
+.photo-btns { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .photo-pick { display: flex; gap: 12px; align-items: center; }
 .photo-pick img { width: 84px; height: 84px; object-fit: cover; border-radius: 12px; }
 
@@ -835,7 +836,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.3";
+const APP_VERSION = "2026-10-28.4";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1541,10 +1542,7 @@ function editCheckin(c, beer) {
         <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Foto</span>
         <div class="photo-pick">
           <img id="ePhotoPreview" alt="" ${c.photo_path ? `src="${esc(photoUrl(c.photo_path))}"` : "hidden"}>
-          <label class="btn soft small" style="cursor:pointer">
-            <input type="file" accept="image/*" id="ePhotoInput" hidden>
-            ${c.photo_path ? "Andere foto kiezen" : "Foto toevoegen"}
-          </label>
+          ${photoButtons("ePhotoInput")}
         </div>
       </div>
       <button class="btn block" type="submit" id="eSave">Wijzigingen opslaan</button>
@@ -1558,6 +1556,8 @@ function editCheckin(c, beer) {
     photoFile = e.target.files[0] || null;
     if (photoFile) { const img = $("#ePhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
   };
+  mirrorGallery("ePhotoInput");
+
   $("#editCheckinForm").onsubmit = async e => {
     e.preventDefault();
     const f = new FormData(e.target);
@@ -1874,8 +1874,12 @@ async function getCamera() {
     { video: true, audio: false },
   ];
   let last;
+  // Eerder gekozen hoofdcamera eerst proberen
+  let saved = null;
+  try { saved = localStorage.getItem("camId"); } catch {}
+  if (saved) tries.unshift({ video: { deviceId: { exact: saved }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
   for (const c of tries) {
-    try { return await navigator.mediaDevices.getUserMedia(c); }
+    try { return await pickMainCamera(await navigator.mediaDevices.getUserMedia(c)); }
     catch (err) {
       last = err;
       // Bij geweigerde toestemming heeft opnieuw proberen geen zin
@@ -1884,6 +1888,44 @@ async function getCamera() {
   }
   throw last;
 }
+// Telefoons met meerdere camera's achterop: de hoofdcamera kiezen (die kan scherpstellen)
+async function pickMainCamera(stream) {
+  try {
+    const cur = stream.getVideoTracks()[0];
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    const backs = devs.filter(d => /back|achter|rear|environment/i.test(d.label));
+    if (backs.length < 2) return remember(stream);
+    // Android noemt de hoofdcamera meestal "camera2 0, facing back"
+    const main = backs.find(d => /\b0\b/.test(d.label)) || backs[0];
+    if (!main || main.deviceId === cur.getSettings().deviceId) return remember(stream);
+    stream.getTracks().forEach(t => t.stop());
+    return remember(await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: main.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }));
+  } catch { return stream; }
+}
+function remember(stream) {
+  try { const id = stream.getVideoTracks()[0].getSettings().deviceId; if (id) localStorage.setItem("camId", id); } catch {}
+  return stream;
+}
+// Doorlopend scherpstellen en iets inzoomen, zodat je op 15 tot 20 cm afstand scherp scant
+async function tuneCamera(stream) {
+  const track = stream?.getVideoTracks()[0];
+  if (!track?.getCapabilities) return;
+  const caps = track.getCapabilities();
+  const adv = {};
+  if (Array.isArray(caps.focusMode) && caps.focusMode.includes("continuous")) adv.focusMode = "continuous";
+  if (caps.zoom && caps.zoom.max >= 1.6) adv.zoom = Math.min(2, caps.zoom.max);
+  if (Object.keys(adv).length) { try { await track.applyConstraints({ advanced: [adv] }); } catch {} }
+}
+async function refocus(stream) {
+  const track = stream?.getVideoTracks()[0];
+  const caps = track?.getCapabilities ? track.getCapabilities() : {};
+  if (!Array.isArray(caps.focusMode)) return;
+  try {
+    if (caps.focusMode.includes("single-shot")) await track.applyConstraints({ advanced: [{ focusMode: "single-shot" }] });
+    setTimeout(() => tuneCamera(stream), 600);
+  } catch {}
+}
+
 // Gaat de app naar de achtergrond, dan de camera echt uitzetten
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && !state.scanner) releaseCamera(); });
 
@@ -1997,10 +2039,7 @@ function renderCheckin() {
           <span style="display:block;font-weight:600;font-size:.92rem;margin-bottom:6px">Foto</span>
           <div class="photo-pick">
             <img id="photoPreview" alt="" hidden>
-            <label class="btn soft small" style="cursor:pointer">
-              <input type="file" accept="image/*" id="photoInput" hidden>
-              Foto maken of kiezen
-            </label>
+            ${photoButtons("photoInput")}
           </div>
         </div>
         <p class="error" id="checkinErr" hidden></p>
@@ -2192,6 +2231,8 @@ function renderCheckin() {
     const img = $("#photoPreview");
     if (photoFile) { img.src = URL.createObjectURL(photoFile); img.hidden = false; }
   };
+  mirrorGallery("photoInput");
+
 
   $("#checkinForm").onsubmit = async e => {
     e.preventDefault();
@@ -2309,6 +2350,19 @@ async function loadBeerStats(beer) {
   } catch {
     if ($("#beerStats")) $("#beerStats").hidden = true;
   }
+}
+
+// Twee knoppen: direct de camera, of een bestaande foto uit de galerij
+function photoButtons(id) {
+  return `<span class="photo-btns">
+      <label class="btn soft small" style="cursor:pointer"><input type="file" accept="image/*" capture="environment" id="${id}" hidden>📷 Foto maken</label>
+      <label class="btn ghost small" style="cursor:pointer"><input type="file" accept="image/*" id="${id}Gal" hidden>Uit galerij</label>
+    </span>`;
+}
+// De galerijknop doet hetzelfde als de cameraknop
+function mirrorGallery(id) {
+  const main = $("#" + id), gal = $("#" + id + "Gal");
+  if (main && gal) gal.onchange = e => main.onchange && main.onchange(e);
 }
 
 function barcodeToolsHtml(withPhoto = true) {
@@ -2430,7 +2484,7 @@ async function startScan(onCode = handleBarcode) {
   if (state.scanner) { await stopScanner(); btn.lastChild.textContent = " Barcode scannen"; msg.hidden = true; return; }
 
   msg.hidden = false;
-  msg.textContent = "Houd de barcode in het kader. Recht of rechtop maakt niet uit.";
+  msg.textContent = "Houd de barcode in het kader, op zo'n 15 tot 20 cm afstand. Niet scherp? Tik op het beeld.";
   btn.lastChild.textContent = " Stoppen met scannen";
   reader.hidden = false;
   reader.innerHTML = `<video playsinline muted autoplay></video><div class="scan-frame" aria-hidden="true"></div>
@@ -2446,6 +2500,8 @@ async function startScan(onCode = handleBarcode) {
     video.srcObject = stream;
     await video.play();
     bindTorch(stream);
+    tuneCamera(stream);
+    video.onclick = () => refocus(stream);   // tik op het beeld: opnieuw scherpstellen
 
     const tick = async () => {
       if (!state.scanner) return;
@@ -3727,10 +3783,7 @@ async function renderBeerForm(id) {
         <h2>Foto</h2>
         <div class="photo-pick">
           <img id="beerPhotoPreview" alt="" ${beer.image_path ? `src="${esc(photoUrl(beer.image_path))}"` : "hidden"}>
-          ${photoLocked ? "" : `<label class="btn soft small" style="cursor:pointer">
-            <input type="file" accept="image/*" id="beerPhoto" hidden>
-            ${beer.image_path ? "Andere foto kiezen" : "Foto kiezen"}
-          </label>`}
+          ${photoLocked ? "" : photoButtons("beerPhoto")}
         </div>
       </div>
 
@@ -3831,6 +3884,8 @@ async function renderBeerForm(id) {
     photoFile = e.target.files[0] || null;
     if (photoFile) { const img = $("#beerPhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
   };
+  mirrorGallery("beerPhoto");
+
 
   const ms = $("#mergeSearch");
   if (ms) {
@@ -4837,10 +4892,7 @@ async function renderCollect() {
         <h2 style="margin-top:6px">Foto <span class="muted small" style="font-weight:400">optioneel</span></h2>
         <div class="photo-pick">
           <img id="colPhotoPreview" alt="" hidden>
-          <label class="btn soft small" style="cursor:pointer">
-            <input type="file" accept="image/*" capture="environment" id="colPhoto" hidden>
-            Foto van het bier maken
-          </label>
+          ${photoButtons("colPhoto")}
         </div>
 
         <label class="field"><span>Omschrijving <span class="muted small" style="font-weight:400">optioneel</span></span>
@@ -4884,6 +4936,8 @@ async function renderCollect() {
     photoFile = e.target.files[0] || null;
     if (photoFile) { const img = $("#colPhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
   };
+  mirrorGallery("colPhoto");
+
 
   const drawList = async () => {
     try {
