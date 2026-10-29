@@ -447,6 +447,19 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .merge-card:has(input:checked) { border-color: var(--hop); background: var(--hop-soft); }
 .merge-card .beer-photo { width: 60px; height: 60px; }
 .merge-card input { width: 20px; height: 20px; accent-color: var(--hop); }
+.dup-list { display: grid; gap: 10px; }
+.dup-pair { padding: 12px; display: grid; gap: 8px; }
+.dup-pair.choice-merge { border-color: var(--hop); box-shadow: 0 0 0 1px var(--hop) inset; }
+.dup-pair.choice-apart { opacity: .7; }
+.dup-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 560px) { .dup-sides { grid-template-columns: 1fr; } }
+.dup-side { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; padding: 8px; border: 1.5px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.dup-side.keep { border-color: var(--hop); background: var(--hop-soft); }
+.dup-side input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--hop); }
+.dup-choice { display: flex; gap: 8px; flex-wrap: wrap; }
+.dup-choice .btn.on[data-choice="merge"] { box-shadow: 0 0 0 3px var(--gold); }
+.dup-choice .btn.on[data-choice="apart"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.auth-tabs.small-tabs { grid-auto-flow: column; grid-auto-columns: 1fr; }
 .process-bar {
   position: sticky; bottom: 0; z-index: 5; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 12px 16px;
@@ -836,7 +849,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.4";
+const APP_VERSION = "2026-10-28.5";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -4253,6 +4266,7 @@ function reviewTabs(active, counts = {}) {
     <div class="auth-tabs small-tabs" role="tablist">
       <a role="tab" href="#controleren" aria-selected="${active === "changes"}">Wijzigingen${counts.changes ? ` (${counts.changes})` : ""}</a>
       <a role="tab" href="#controleren/verzamelbak" aria-selected="${active === "inbox"}">Verzamelbak${counts.inbox ? ` (${counts.inbox})` : ""}</a>
+      <a role="tab" href="#controleren/dubbel" aria-selected="${active === "dups"}">Dubbel?</a>
     </div>`;
 }
 async function reviewCounts() {
@@ -4321,6 +4335,205 @@ async function mergeTwoBeers(a, b) {
       resolve(true);
     };
   });
+}
+
+// ---------------------------------------------------------------------
+// Controleren, tabblad Dubbel?: voorstellen voor bieren die waarschijnlijk dubbel zijn
+// ---------------------------------------------------------------------
+const DUP_GENERIC = /\b(bierbrouwerij|brouwerij|brouwerijen|brasserie|brasseries|brewery|breweries|brewing|brewers|brauerei|privatbrauerei|brauhaus|bryggeri|bryggerierne|birrificio|cerveceria|cervejaria|company|co|inc|ltd|llc|gmbh|ag|bv|nv|sa|kg|the|de|het|and|en|of|koninklijke|group|groupe)\b/g;
+const DUP_EXTRA = new Set(["bier", "beer", "biere", "trappist", "trappiste", "abdij", "abbey", "abbaye", "abdijbier"]);
+const dupBrew = s => foldTxt(s).replace(/[^a-z0-9]+/g, " ").replace(DUP_GENERIC, " ").replace(/\s+/g, " ").trim();
+const dupName = s => foldTxt(s).replace(/(\d)[.,](\d)/g, "$1$2").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+function dupCore(b) {
+  const bt = new Set(dupBrew(b.brewery || "").split(" ").filter(Boolean));
+  const toks = dupName(b.name).split(" ").filter(t => t && !bt.has(t) && !DUP_EXTRA.has(t));
+  return toks.join(" ");
+}
+function levRatio(a, b) {
+  if (a === b) return 1;
+  const m = a.length, n = b.length;
+  if (!m || !n) return 0;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j), cur = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    [prev, cur] = [cur, prev];
+  }
+  return 1 - prev[n] / Math.max(m, n);
+}
+const digitsOf = s => (s.match(/\d+/g) || []).join(" ");
+
+function findDuplicatePairs(beers, notDup) {
+  const pairs = [], seen = new Set();
+  const add = (a, b, score, why) => {
+    const k = a.id < b.id ? a.id + "|" + b.id : b.id + "|" + a.id;
+    if (seen.has(k) || notDup.has(k)) return;
+    // Elk een eigen Untappd-nummer: volgens Untappd verschillende bieren
+    if (a.untappd_id && b.untappd_id && a.untappd_id !== b.untappd_id) return;
+    seen.add(k);
+    pairs.push({ a, b, score, why });
+  };
+  const items = beers.map(b => ({ b, core: dupCore(b), bk: dupBrew(b.brewery || "") }));
+  // Per brouwerij vergelijken
+  const byBrew = new Map();
+  for (const x of items) { if (!byBrew.has(x.bk)) byBrew.set(x.bk, []); byBrew.get(x.bk).push(x); }
+  for (const [bk, list] of byBrew) {
+    if (!bk) continue;
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const x = list[i], y = list[j];
+      if (!x.core || !y.core) continue;
+      if (digitsOf(x.core) !== digitsOf(y.core)) continue;   // jaartallen, percentages: bewust apart
+      if (x.core === y.core) { add(x.b, y.b, 1, dupName(x.b.name) === dupName(y.b.name) ? "Zelfde naam en brouwerij" : "Zelfde naam zonder de brouwerijnaam"); continue; }
+      // Bijna dezelfde spelling: precies één woord anders, en dat woord is een spellingsvariant
+      // (Pilsner en Pilsener wel; Blanche en Blonde, Märzen en Weizen, II en III niet)
+      const tx = x.core.split(" "), ty = y.core.split(" ");
+      if (tx.length !== ty.length) continue;
+      const restX = tx.filter(t => !ty.includes(t)), restY = ty.filter(t => !tx.includes(t));
+      if (restX.length !== 1 || restY.length !== 1) continue;
+      const [w1, w2] = [restX[0], restY[0]];
+      if (Math.min(w1.length, w2.length) < 4 || w1.slice(0, 2) !== w2.slice(0, 2)) continue;   // Natte en Zatte zijn echt anders
+      const r = levRatio(w1, w2);
+      if (r >= 0.8) add(x.b, y.b, 0.8 + r / 10, `Bijna dezelfde spelling (“${w1}” en “${w2}”)`);
+    }
+  }
+  // Bier zonder brouwerij met dezelfde naam als een bier met brouwerij
+  const byCore = new Map();
+  for (const x of items) { if (!x.core) continue; if (!byCore.has(x.core)) byCore.set(x.core, []); byCore.get(x.core).push(x); }
+  for (const list of byCore.values()) {
+    const none = list.filter(x => !x.bk), some = list.filter(x => x.bk);
+    for (const x of none) for (const y of some) add(x.b, y.b, 0.9, "Zelfde naam; bij één bier ontbreekt de brouwerij");
+  }
+  return pairs.sort((p, q) => q.score - p.score || (p.a.name || "").localeCompare(q.a.name || "", "nl"));
+}
+
+async function renderDuplicates() {
+  setTab("controleren");
+  if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
+  const counts = await reviewCounts();
+  view().innerHTML = `
+    <div class="stack">
+      <div class="stack">
+        <h1>Controleren</h1>
+        ${reviewTabs("dups", counts)}
+        <p class="muted">Zoekt in de hele database naar bieren die waarschijnlijk dubbel zijn. Kies per paar wat er moet gebeuren en klik onderaan op Verwerken. Paren die je apart houdt, komen niet meer terug.</p>
+      </div>
+      <button class="btn" type="button" id="dupFind">Zoeken naar dubbele bieren</button>
+      <div id="dupOut"></div>
+    </div>`;
+  $("#dupFind").onclick = () => runDuplicateSearch();
+}
+
+async function runDuplicateSearch() {
+  const out = $("#dupOut"), btn = $("#dupFind");
+  btn.disabled = true;
+  out.innerHTML = `<p class="muted">Alle bieren ophalen en vergelijken…</p>`;
+  let beers, nd;
+  try {
+    [beers, { data: nd }] = await Promise.all([fetchAllBeers(), sb.from("beer_not_duplicates").select("beer_a, beer_b")]);
+  } catch (err) { out.innerHTML = `<p class="error">Laden lukte niet: ${esc(err.message)}</p>`; btn.disabled = false; return; }
+  const notDup = new Set((nd || []).map(r => r.beer_a + "|" + r.beer_b));
+  const all = findDuplicatePairs(beers, notDup);
+  const pairs = all.slice(0, 150);
+  btn.disabled = false; btn.textContent = "Opnieuw zoeken";
+  if (!pairs.length) { out.innerHTML = `<div class="panel empty"><h2>Geen dubbele bieren gevonden</h2><p class="muted">Proost!</p></div>`; return; }
+
+  // Check-ins en barcodes tellen, om het beste bier voor te stellen
+  const ids = [...new Set(pairs.flatMap(p => [p.a.id, p.b.id]))];
+  const ck = {}, codes = {};
+  for (let i = 0; i < ids.length; i += 100) {
+    const part = ids.slice(i, i + 100);
+    const [{ data: c1 }, { data: c2 }] = await Promise.all([
+      sb.from("checkins").select("beer_id").in("beer_id", part),
+      sb.from("beer_barcodes").select("beer_id").in("beer_id", part),
+    ]);
+    for (const r of c1 || []) ck[r.beer_id] = (ck[r.beer_id] || 0) + 1;
+    for (const r of c2 || []) codes[r.beer_id] = (codes[r.beer_id] || 0) + 1;
+  }
+  const weight = b => (ck[b.id] || 0) * 10 + (codes[b.id] || 0) * 3 + (b.image_path ? 2 : 0) + (b.untappd_id ? 1 : 0)
+    + ["style", "abv", "country", "description"].filter(f => b[f] != null && b[f] !== "").length;
+  pairs.forEach((p, i) => { p.i = i; p.keep = weight(p.a) >= weight(p.b) ? "a" : "b"; p.choice = ""; });
+
+  const side = (p, w) => {
+    const b = p[w];
+    return `
+      <label class="dup-side ${p.keep === w ? "keep" : ""}">
+        <input type="radio" name="keep${p.i}" value="${w}" ${p.keep === w ? "checked" : ""}>
+        <span class="db-body">
+          <b>${esc(b.name)}</b>
+          <span class="muted small">${esc([b.brewery, b.style, b.abv != null ? nf(b.abv) + "%" : ""].filter(Boolean).join(", ")) || "Geen gegevens"}</span>
+          <span class="tags">
+            <span class="tag ${ck[b.id] ? "on" : ""}">${ck[b.id] || 0} check-ins</span>
+            ${codes[b.id] ? `<span class="tag">${codes[b.id]} barcode${codes[b.id] === 1 ? "" : "s"}</span>` : ""}
+            ${b.image_path ? `<span class="tag">Foto</span>` : ""}
+          </span>
+        </span>
+      </label>`;
+  };
+  out.innerHTML = `
+    <p class="muted small">${all.length} ${all.length === 1 ? "mogelijk dubbel paar" : "mogelijk dubbele paren"} gevonden${all.length > pairs.length ? `; de ${pairs.length} meest waarschijnlijke staan hieronder` : ""}. Het bier met het bolletje blijft; het andere gaat erin op.</p>
+    <div class="dup-list">${pairs.map(p => `
+      <div class="panel dup-pair" data-pair="${p.i}">
+        <p class="small muted">${esc(p.why)}${p.score < 1 ? ` (${Math.round(p.score * 100)}% gelijk)` : ""}</p>
+        <div class="dup-sides">${side(p, "a")}${side(p, "b")}</div>
+        <div class="dup-choice" role="group" aria-label="Wat moet er gebeuren?">
+          <button type="button" class="btn small" data-choice="merge">Samenvoegen</button>
+          <button type="button" class="btn ghost small" data-choice="apart">Apart houden</button>
+        </div>
+      </div>`).join("")}</div>
+    <div class="process-bar dup-bar">
+      <span class="muted small" id="dupSum">Nog niets gekozen</span>
+      <button class="btn" type="button" id="dupGo" disabled>Verwerken</button>
+    </div>`;
+
+  const sum = () => {
+    const m = pairs.filter(p => p.choice === "merge").length, a = pairs.filter(p => p.choice === "apart").length;
+    $("#dupSum").textContent = m || a ? `${m} samenvoegen, ${a} apart houden` : "Nog niets gekozen";
+    $("#dupGo").disabled = !(m || a);
+  };
+  out.onclick = e => {
+    const c = e.target.closest("[data-choice]");
+    if (!c) return;
+    const box = c.closest("[data-pair]"), p = pairs[+box.dataset.pair];
+    p.choice = p.choice === c.dataset.choice ? "" : c.dataset.choice;   // nogmaals tikken = keuze weg
+    box.classList.toggle("choice-merge", p.choice === "merge");
+    box.classList.toggle("choice-apart", p.choice === "apart");
+    box.querySelectorAll("[data-choice]").forEach(x => x.classList.toggle("on", x.dataset.choice === p.choice));
+    sum();
+  };
+  out.onchange = e => {
+    const r = e.target.closest("input[type=radio]");
+    if (!r) return;
+    const box = r.closest("[data-pair]"), p = pairs[+box.dataset.pair];
+    p.keep = r.value;
+    box.querySelectorAll(".dup-side").forEach(l => l.classList.toggle("keep", l.querySelector("input").checked));
+  };
+  $("#dupGo").onclick = async () => {
+    const merges = pairs.filter(p => p.choice === "merge"), aparts = pairs.filter(p => p.choice === "apart");
+    const ok = await confirmDelete("Verwerken?",
+      `<p>${merges.length ? `<b>${merges.length}</b> ${merges.length === 1 ? "paar wordt" : "paren worden"} samengevoegd: check-ins, foto’s, reacties, proosts en barcodes gaan naar het bier dat blijft.` : ""}
+       ${aparts.length ? `<br><b>${aparts.length}</b> ${aparts.length === 1 ? "paar blijft" : "paren blijven"} apart en ${aparts.length === 1 ? "komt" : "komen"} niet meer terug.` : ""}</p>`,
+      "Ja, verwerken");
+    if (!ok) return;
+    $("#dupGo").disabled = true;
+    const gone = new Set();
+    let done = 0, failed = [];
+    for (const p of merges) {
+      const keep = p[p.keep], remove = p[p.keep === "a" ? "b" : "a"];
+      if (gone.has(keep.id) || gone.has(remove.id)) { failed.push(`${remove.name}: een van beide is al samengevoegd; zoek opnieuw`); continue; }
+      const { error } = await sb.rpc("admin_merge_beers", { keep: keep.id, remove: remove.id });
+      if (error) failed.push(`${remove.name}: ${error.message}`); else { gone.add(remove.id); done++; }
+      $("#dupSum").textContent = `Samenvoegen… ${done} van ${merges.length}`;
+    }
+    const rows = aparts.filter(p => !gone.has(p.a.id) && !gone.has(p.b.id))
+      .map(p => p.a.id < p.b.id ? { beer_a: p.a.id, beer_b: p.b.id } : { beer_a: p.b.id, beer_b: p.a.id });
+    if (rows.length) {
+      const { error } = await sb.from("beer_not_duplicates").upsert(rows, { onConflict: "beer_a,beer_b", ignoreDuplicates: true });
+      if (error) failed.push("Apart houden opslaan lukte niet: " + error.message);
+    }
+    toast(`${done} samengevoegd, ${rows.length} apart gehouden${failed.length ? `, ${failed.length} lukte niet` : ""}`);
+    if (failed.length) alert("Niet gelukt:\n\n" + failed.join("\n"));
+    runDuplicateSearch();
+  };
 }
 
 // Een nieuw (dubbel) bier laten opgaan in een bestaand bier; check-ins, foto's,
@@ -6447,6 +6660,7 @@ async function route() {
   if (h === "database") return renderDatabase();
   if (h === "verzamel") return renderCollect();
   if (h === "verwerken" || h === "controleren/verzamelbak") return renderProcess();
+  if (h === "controleren/dubbel") return renderDuplicates();
   if (h === "untappd") return renderUntappdImport();
   if (h === "controleren") return renderReview();
   if (h === "barcodes") return renderBarcodes();
