@@ -430,6 +430,23 @@ button.tag { cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 70
 #pMerge.dim { opacity: .55; }
 .process-right { padding-bottom: 24px; }
 @media (max-width: 999px) { .process-right { padding-bottom: 150px; } #pNew, #pEdit { scroll-margin-top: 80px; } }
+.merge-bar {
+  position: sticky; bottom: 8px; z-index: 5; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--hop); border-radius: var(--radius-lg); padding: 10px 14px;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, .06);
+}
+body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px)); }
+.merge-bar #dbMergeInfo { flex: 1; min-width: 160px; font-size: .9rem; }
+.db-row.pickable { grid-template-columns: 26px 60px minmax(0, 1fr); }
+.db-row.picked { border-color: var(--hop); background: var(--hop-soft); }
+.pick-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--hop); display: grid; place-items: center; font-weight: 800; color: #fff; align-self: center; }
+.db-row.picked .pick-dot { background: var(--hop); }
+#dbMergeMode.on { background: var(--hop); color: #fff; border-color: var(--hop); }
+.merge-cards { display: grid; gap: 8px; }
+.merge-card { display: grid; grid-template-columns: auto 60px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px; border: 1.5px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.merge-card:has(input:checked) { border-color: var(--hop); background: var(--hop-soft); }
+.merge-card .beer-photo { width: 60px; height: 60px; }
+.merge-card input { width: 20px; height: 20px; accent-color: var(--hop); }
 .process-bar {
   position: sticky; bottom: 0; z-index: 5; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 12px 16px;
@@ -818,7 +835,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.2";
+const APP_VERSION = "2026-10-28.3";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1849,10 +1866,23 @@ async function getCamera() {
     return s;
   }
   releaseCamera();
-  return navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-    audio: false,
-  });
+  // Sommige Android-telefoons met meerdere camera's weigeren een specifiek verzoek;
+  // dan steeds eenvoudiger proberen
+  const tries = [
+    { video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+    { video: { facingMode: "environment" }, audio: false },
+    { video: true, audio: false },
+  ];
+  let last;
+  for (const c of tries) {
+    try { return await navigator.mediaDevices.getUserMedia(c); }
+    catch (err) {
+      last = err;
+      // Bij geweigerde toestemming heeft opnieuw proberen geen zin
+      if (/NotAllowed|Permission|Security/i.test(String(err?.name || err))) throw err;
+    }
+  }
+  throw last;
 }
 // Gaat de app naar de achtergrond, dan de camera echt uitzetten
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && !state.scanner) releaseCamera(); });
@@ -2294,9 +2324,9 @@ function barcodeToolsHtml(withPhoto = true) {
         Foto van de barcode maken
       </label>` : ""}`;
 }
-function bindBarcodePhoto(onCode) {
-  if (!$("#barcodePhoto")) return;   // niet op elke pagina aanwezig
-  $("#barcodePhoto").onchange = async e => {
+function bindBarcodePhoto(onCode, id = "barcodePhoto") {
+  if (!$("#" + id)) return;   // niet op elke pagina aanwezig
+  $("#" + id).onchange = async e => {
     const file = e.target.files[0];
     if (!file) return;
     if (typeof ZXing === "undefined") return toast("De scanner kon niet worden geladen. Ververs de pagina.");
@@ -2437,10 +2467,21 @@ async function startScan(onCode = handleBarcode) {
     const t = String(ex?.name || ex?.message || ex);
     msg.textContent =
       /insecure/.test(t) || !window.isSecureContext ? "De camera werkt alleen via een https-adres. Open de app via https://." :
-      /NotAllowed|Permission/i.test(t) ? "De browser heeft geen toestemming voor de camera. Op een iPhone: Instellingen, Apps, Safari, Camera, kies Sta toe. Of typ de barcode in." :
+      /NotAllowed|Permission/i.test(t) ? (/Android/i.test(navigator.userAgent)
+        ? "De browser heeft geen toestemming voor de camera. Tik in Chrome op het icoon links in de adresbalk, kies Rechten en zet Camera op Toestaan. Of maak een foto van de barcode."
+        : "De browser heeft geen toestemming voor de camera. Op een iPhone: Instellingen, Apps, Safari, Camera, kies Sta toe. Of maak een foto van de barcode.") :
       /NotFound|Overconstrained/i.test(t) ? "Er is geen camera gevonden op dit apparaat. Gebruik een telefoon, of zoek het bier op naam." :
       /NotReadable|in use/i.test(t) ? "De camera is in gebruik door een andere app. Sluit die app en probeer het opnieuw." :
-      `De camera kon niet worden gestart (${t}). Typ de barcode in, of zoek het bier op naam.`;
+      `De camera kon niet worden gestart (${t}). Maak een foto van de barcode, typ hem in, of zoek het bier op naam.`;
+    // Reserve: de gewone camera-app van de telefoon, die werkt altijd
+    if (!$("#barcodePhoto") && !$("#barcodePhotoFallback")) {
+      msg.insertAdjacentHTML("afterend", `
+        <label class="btn soft block" style="cursor:pointer;margin-top:8px">
+          <input type="file" accept="image/*" capture="environment" id="barcodePhotoFallback" hidden>
+          Foto van de barcode maken
+        </label>`);
+      bindBarcodePhoto(onCode, "barcodePhotoFallback");
+    }
   }
 }
 
@@ -3485,6 +3526,7 @@ async function renderDatabase() {
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn soft small" href="#barcodes">Barcodes koppelen</a>
+        ${state.me?.is_admin ? `<button class="btn ghost small" type="button" id="dbMergeMode">Samenvoegen</button>` : ""}
         <button class="btn ghost small" type="button" id="dbExport">Exporteren (CSV)</button>
         ${state.me?.is_admin ? `<button class="btn ghost small" type="button" id="dbImport">Importeren (CSV)</button>` : ""}
       </div>
@@ -3501,12 +3543,18 @@ async function renderDatabase() {
       </div>
       <div class="db-list" id="dbList"></div>
       <button class="btn ghost block" id="dbMore" type="button" hidden>Meer laden</button>
+      <div class="merge-bar" id="dbMergeBar" hidden>
+        <span id="dbMergeInfo">Tik twee bieren aan om ze samen te voegen</span>
+        <button class="btn small" type="button" id="dbMergeGo" disabled>Samenvoegen</button>
+        <button class="btn ghost small" type="button" id="dbMergeStop">Stoppen</button>
+      </div>
     </div>`;
 
-  let items = [], seq = 0;
+  let items = [], seq = 0, mergeMode = false, picked = [];
   const dbFriends = {};
   const rowHtml = b => `
-    <button type="button" class="db-row" data-dbbeer="${b.id}">
+    <button type="button" class="db-row ${mergeMode ? "pickable" : ""} ${picked.includes(b.id) ? "picked" : ""}" data-dbbeer="${b.id}">
+      ${mergeMode ? `<span class="pick-dot" aria-hidden="true">${picked.includes(b.id) ? "✓" : ""}</span>` : ""}
       ${photoBlock(b.image_path, b.style)}
       <span class="db-body">
         <b>${esc(b.name)}</b>
@@ -3558,7 +3606,30 @@ async function renderDatabase() {
   $("#dbMore").onclick = () => load(true);
   $("#dbExport").onclick = openExportDialog;
   if ($("#dbImport")) $("#dbImport").onclick = openImportDialog;
+  // Samenvoegen: twee bieren aantikken
+  const drawMerge = () => {
+    $("#dbMergeBar").hidden = !mergeMode;
+    $("#dbMergeInfo").textContent = picked.length === 2 ? "2 bieren gekozen" : `Tik twee bieren aan om ze samen te voegen (${picked.length} van 2)`;
+    $("#dbMergeGo").disabled = picked.length !== 2;
+    $("#dbList").innerHTML = items.map(rowHtml).join("");
+  };
+  const mm = $("#dbMergeMode");
+  if (mm) mm.onclick = () => { mergeMode = !mergeMode; picked = []; mm.classList.toggle("on", mergeMode); drawMerge(); };
+  $("#dbMergeStop").onclick = () => { mergeMode = false; picked = []; mm?.classList.remove("on"); drawMerge(); };
+  $("#dbMergeGo").onclick = async () => {
+    const pair = picked.map(id => items.find(b => b.id === id)).filter(Boolean);
+    if (pair.length !== 2) return;
+    if (await mergeTwoBeers(pair[0], pair[1])) { mergeMode = false; picked = []; mm?.classList.remove("on"); $("#dbMergeBar").hidden = true; load(false); }
+  };
+
   $("#dbList").onclick = e => {
+    if (mergeMode) {
+      const r = e.target.closest("[data-dbbeer]");
+      if (!r) return;
+      const id = r.dataset.dbbeer;
+      picked = picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id].slice(-2);
+      return drawMerge();
+    }
     const fr = e.target.closest("[data-dbfriends]");
     if (fr) {
       e.stopPropagation();
@@ -4142,6 +4213,59 @@ async function updateReviewCount() {
   const count = c.changes + c.inbox;
   const el = $("#reviewCount");
   if (el) { el.textContent = count || ""; el.hidden = !count; }
+}
+
+// Twee bieren samenvoegen vanuit de Bierdatabase: kiezen welk bier blijft
+async function mergeTwoBeers(a, b) {
+  const info = async beer => {
+    const [{ count: n }, codes] = await Promise.all([
+      sb.from("checkins").select("id", { count: "exact", head: true }).eq("beer_id", beer.id),
+      codesOf(beer.id),
+    ]);
+    return { beer, checkins: n || 0, codes };
+  };
+  const [A, B] = await Promise.all([info(a), info(b)]);
+  const score = x => x.checkins * 10 + x.codes.length * 3 + (x.beer.image_path ? 2 : 0) + (x.beer.untappd_id ? 1 : 0);
+  let keep = score(A) >= score(B) ? A : B;
+  const card = x => `
+    <label class="merge-card">
+      <input type="radio" name="keep" value="${x.beer.id}" ${x === keep ? "checked" : ""}>
+      ${photoBlock(x.beer.image_path, x.beer.style)}
+      <span class="db-body">
+        <b>${esc(x.beer.name)}</b>
+        <span class="muted small">${esc([x.beer.brewery, x.beer.style, x.beer.abv != null ? nf(x.beer.abv) + "%" : "", x.beer.country].filter(Boolean).join(", ")) || "Geen gegevens"}</span>
+        <span class="tags">
+          <span class="tag ${x.checkins ? "on" : ""}">${x.checkins} ${x.checkins === 1 ? "check-in" : "check-ins"}</span>
+          <span class="tag">${x.codes.length ? `${x.codes.length} ${x.codes.length === 1 ? "barcode" : "barcodes"}` : "Geen barcode"}</span>
+          ${x.beer.image_path ? `<span class="tag">Foto</span>` : ""}
+        </span>
+      </span>
+    </label>`;
+  return new Promise(resolve => {
+    openDialog(`
+      <div class="stack">
+        <h2>Bieren samenvoegen</h2>
+        <p class="muted small">Kies welk bier je <b>houdt</b>. Het andere bier gaat erin op: check-ins (met foto's, scores, reacties en proosts) en barcodes verhuizen mee, en lege velden worden aangevuld.</p>
+        <div class="merge-cards">${card(A)}${card(B)}</div>
+        <button class="btn block" type="button" id="mtGo">Samenvoegen</button>
+      </div>`);
+    const onClose = () => resolve(false);
+    $("#dlg").addEventListener("close", onClose, { once: true });
+    $("#mtGo").onclick = async () => {
+      const keepId = $("#dlgBody").querySelector("input[name=keep]:checked").value;
+      const K = keepId === A.beer.id ? A : B, R = K === A ? B : A;
+      $("#dlg").removeEventListener("close", onClose);
+      const ok = await confirmDelete("Samenvoegen?",
+        `<p><b>${esc(R.beer.name)}</b> gaat op in <b>${esc(K.beer.name)}</b>.</p>
+         <p class="small">${R.checkins ? `${R.checkins} ${R.checkins === 1 ? "check-in verhuist" : "check-ins verhuizen"} mee` : "Er zijn geen check-ins om te verhuizen"}${R.codes.length ? `, en ${R.codes.length} ${R.codes.length === 1 ? "barcode" : "barcodes"}` : ""}. ${esc(R.beer.name)} verdwijnt daarna.</p>`,
+        "Ja, samenvoegen");
+      if (!ok) return resolve(false);
+      const { data, error } = await sb.rpc("admin_merge_beers", { keep: K.beer.id, remove: R.beer.id });
+      if (error) { toast("Samenvoegen lukte niet: " + error.message); return resolve(false); }
+      toast(`Samengevoegd tot ${K.beer.name}${data?.checkins ? `, ${data.checkins} ${data.checkins === 1 ? "check-in" : "check-ins"} verhuisd` : ""}`);
+      resolve(true);
+    };
+  });
 }
 
 // Een nieuw (dubbel) bier laten opgaan in een bestaand bier; check-ins, foto's,
