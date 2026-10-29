@@ -856,7 +856,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.6";
+const APP_VERSION = "2026-10-28.7";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1336,6 +1336,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
           </select>
         </div>
         <div class="beers" id="beerList"></div>
+        <button class="btn ghost block" id="mineMore" type="button" hidden>Meer bieren tonen</button>
       ` : `
         <div class="panel empty">
           ${glassSvg("var(--line)")}
@@ -1362,7 +1363,12 @@ function renderCollection(groups, { title, intro, own, profile }) {
       color: (a, b) => beerColor(a.beer.style).rank - beerColor(b.beer.style).rank,
     };
     list.sort(by[sort]);
-    $("#beerList").innerHTML = list.length ? list.map(g => `
+    shown = Math.min(list.length, MINE_STEP);
+    current = list;
+    $("#beerList").innerHTML = list.length ? list.slice(0, shown).map(cardHtml).join("") : `<p class="muted">Geen bieren gevonden met deze filters.</p>`;
+    $("#mineMore").hidden = shown >= list.length;
+  };
+  const cardHtml = g => `
       <button class="beer" data-beer="${g.beer.id}">
         ${photoBlock(g.photo, g.beer.style)}
         <div class="beer-body">
@@ -1377,8 +1383,26 @@ function renderCollection(groups, { title, intro, own, profile }) {
             <span class="count">${g.checkins.length > 1 ? `${g.checkins.length} keer` : fmtDate(g.last, g.lastTz)}</span>
           </div>
         </div>
-      </button>`).join("") : `<p class="muted">Geen bieren gevonden met deze filters.</p>`;
+      </button>`;
+  // Steeds 24 bieren tonen; de volgende pas bij verder scrollen (scheelt foto's laden)
+  const MINE_STEP = 24;
+  let shown = 0, current = [];
+  const moreMine = () => {
+    const next = current.slice(shown, shown + MINE_STEP);
+    if (!next.length) return;
+    $("#beerList").insertAdjacentHTML("beforeend", next.map(cardHtml).join(""));
+    shown += next.length;
+    $("#mineMore").hidden = shown >= current.length;
   };
+  $("#mineMore").onclick = moreMine;
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver(ents => {
+      const el = $("#mineMore");
+      if (!el || !document.body.contains(ents[0].target)) return io.disconnect();
+      if (ents.some(x => x.isIntersecting) && !el.hidden) moreMine();
+    }, { rootMargin: "600px 0px" });
+    io.observe($("#mineMore"));
+  }
   ["fSearch", "fStyle", "fSort"].forEach(id => $("#" + id).addEventListener("input", draw));
   draw();
 
@@ -5556,17 +5580,45 @@ function relTime(iso) {
   return "zojuist";
 }
 
-async function fetchFeed(from, onlyId = null) {
+// Tijdlijn per periode: eerst de laatste 4 weken, daarna steeds 2 weken verder terug
+const FEED_FIRST_DAYS = 28, FEED_STEP_DAYS = 14, DAY_MS = 86400000;
+function feedBase() {
+  let q = sb.from("checkins").select("id, drunk_at");
+  if (!(feedState.scope === "all" && state.me?.is_admin)) q = q.in("user_id", feedState.ids);
+  return q;
+}
+// Haalt de volgende periode op; slaat lege periodes over. Geeft [] als er niets ouders meer is.
+async function fetchFeedWindow(first) {
+  let to = first ? null : feedState.until;
+  let from = new Date((first ? Date.now() : new Date(to).getTime()) - (first ? FEED_FIRST_DAYS : FEED_STEP_DAYS) * DAY_MS).toISOString();
+  for (let guard = 0; guard < 6; guard++) {
+    const rows = await fetchFeed(0, null, { from, to });
+    feedState.until = from;
+    if (rows.length) return rows;
+    // Leeg: naar de eerstvolgende oudere check-in springen
+    const { data } = await feedBase().lt("drunk_at", from).order("drunk_at", { ascending: false }).limit(1);
+    if (!data?.length) { feedState.done = true; return []; }
+    to = from;
+    from = new Date(new Date(data[0].drunk_at).getTime() - FEED_STEP_DAYS * DAY_MS).toISOString();
+  }
+  return [];
+}
+
+async function fetchFeed(from, onlyId = null, win = null) {
   let q = sb
     .from("checkins")
     .select("*, beer:beers(*), profile:profiles!checkins_user_id_fkey(id, display_name, avatar_path), comments(id, body, created_at, user_id, profile:profiles!comments_user_id_fkey(id, display_name, avatar_path)), cheers(user_id, profile:profiles!cheers_user_id_fkey(id, display_name))");
   if (onlyId) q = q.eq("id", onlyId);
   else if (!(feedState.scope === "all" && state.me?.is_admin)) q = q.in("user_id", feedState.ids);
+  if (win) {
+    q = q.gte("drunk_at", win.from);
+    if (win.to) q = q.lt("drunk_at", win.to);
+  }
   const { data, error } = await q
     .order("drunk_at", { ascending: false })
     .order("id", { ascending: false })
     .order("created_at", { referencedTable: "comments", ascending: true })
-    .range(from, from + FEED_PAGE - 1);
+    .range(from, from + (win ? 499 : FEED_PAGE - 1));
   if (error) throw error;
   return data;
 }
@@ -5688,8 +5740,8 @@ async function renderFeed(onlyId = null) {
   view().innerHTML = `<div class="loading">Activiteit ophalen…</div>`;
   try {
     feedState.ids = [state.user.id, ...(await friendIds())];
-    feedState.items = await fetchFeed(0, onlyId);
-    feedState.done = onlyId ? true : feedState.items.length < FEED_PAGE;
+    feedState.done = !!onlyId;
+    feedState.items = onlyId ? await fetchFeed(0, onlyId) : await fetchFeedWindow(true);
     if (onlyId) feedState.open.add(onlyId);   // reacties meteen open
   } catch (err) {
     view().innerHTML = `<p class="error">Activiteit kon niet worden geladen: ${esc(err.message)}</p>`;
@@ -5704,7 +5756,7 @@ async function renderFeed(onlyId = null) {
         <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Beheer</button>
       </div>` : ""}
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
-        <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Meer laden</button>`
+        <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Eerdere check-ins laden</button>`
       : onlyId ? `<div class="panel empty"><h2>Deze check-in bestaat niet meer</h2><p class="muted">Misschien is hij verwijderd.</p></div>`
       : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen check-ins</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden. Tik op <b>+</b> rechtsboven om een bier in te checken.</p><p style="margin-top:16px"><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
     </div>`;
@@ -5712,16 +5764,28 @@ async function renderFeed(onlyId = null) {
   view().querySelectorAll("[data-scope]").forEach(b => b.onclick = () => { feedState.scope = b.dataset.scope; renderFeed(); });
   const more = $("#moreBtn");
   if (more) more.onclick = async () => {
+    if (more.disabled) return;
     more.disabled = true;
+    more.textContent = "Laden…";
     try {
-      const next = await fetchFeed(feedState.items.length);
-      feedState.items.push(...next);
-      feedState.done = next.length < FEED_PAGE;
-      $("#feed").insertAdjacentHTML("beforeend", next.map(postHtml).join(""));
+      const next = await fetchFeedWindow(false);
+      const known = new Set(feedState.items.map(x => x.id));
+      const fresh = next.filter(x => !known.has(x.id));
+      feedState.items.push(...fresh);
+      $("#feed").insertAdjacentHTML("beforeend", fresh.map(postHtml).join(""));
     } catch (err) { toast("Laden lukte niet: " + err.message); }
     more.disabled = false;
+    more.textContent = "Eerdere check-ins laden";
     more.hidden = feedState.done;
   };
+  // Verder scrollen: vanzelf de volgende periode laden
+  if (more && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver(ents => {
+      if (!document.body.contains(more)) return io.disconnect();
+      if (ents.some(x => x.isIntersecting) && !more.hidden && !more.disabled) more.click();
+    }, { rootMargin: "600px 0px" });
+    io.observe(more);
+  }
 
   // Emoji-knop: textarea houdt de focus, emoji komt op de cursorpositie
   view().onpointerdown = e => { if (e.target.closest("[data-emoji]")) e.preventDefault(); };
