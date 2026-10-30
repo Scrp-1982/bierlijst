@@ -869,7 +869,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.9";
+const APP_VERSION = "2026-10-28.10";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -5731,6 +5731,7 @@ async function sharedOwners() {
 async function updateShopLink() {
   const a = $("#shopLink");
   if (!a || !state.user) return;
+  if (stockEnabled()) { a.hidden = false; return; }   // met een eigen voorraad: altijd
   const { count } = await sb.from("stock_shares").select("owner", { count: "exact", head: true }).eq("viewer", state.user.id);
   a.hidden = !count;
 }
@@ -5738,17 +5739,24 @@ async function updateShopLink() {
 async function renderShop() {
   setTab("winkel");
   view().innerHTML = `<div class="loading">Even kijken wie zijn voorraad met je deelt…</div>`;
-  const owners = await sharedOwners();
+  // Jijzelf eerst (als je een voorraad hebt), daarna wie zijn voorraad met je deelt
+  const shared = await sharedOwners();
+  const owners = [...(stockEnabled() ? [{ ...state.me, id: state.user.id, self: true }] : []), ...shared];
   if (!owners.length) {
     view().innerHTML = `<div class="panel empty"><h2>Nog niemand deelt zijn voorraad</h2><p class="muted">Als een vriend je toegang geeft tot zijn voorraad, kun je hier in de winkel een bier scannen en zien of hij het al heeft.</p></div>`;
     return;
   }
-  const names = owners.map(o => esc(o.display_name)).join(" en ");
+  const others = shared.map(o => esc(o.display_name));
+  const who = stockEnabled()
+    ? (others.length ? `jij en ${others.join(" en ")}` : "jij")
+    : others.join(" en ");
   view().innerHTML = `
     <div class="stack">
       <div>
         <h1>Winkelscanner</h1>
-        <p class="muted">Scan een bier en zie of ${names} het al ${owners.length === 1 ? "heeft" : "hebben"} gedronken of thuis ${owners.length === 1 ? "heeft" : "hebben"} staan.</p>
+        <p class="muted">${owners.length === 1 && stockEnabled()
+          ? "Scan een bier en zie of je het al hebt gedronken of thuis hebt staan."
+          : `Scan een bier en zie of ${who} het al ${owners.length === 1 ? "heeft" : "hebben"} gedronken of thuis ${owners.length === 1 ? "heeft" : "hebben"} staan.`}</p>
       </div>
       <div class="panel stack">
         ${barcodeToolsHtml(false)}
@@ -5777,7 +5785,7 @@ async function renderShop() {
       if (mine.length) parts.push(`<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>Al gedronken</b> (${mine.length}×, laatst op ${fmtDate(mine[0].drunk_at, mine[0].tz)}${avg != null ? `, gemiddeld ${nf(avg, 2)}` : ""})</span></div>`);
       if (qty) parts.push(`<div class="src-line web"><span class="src-ic" aria-hidden="true">📦</span><span><b>Op voorraad</b> (${qty} ${qty === 1 ? "flesje" : "flesjes"})</span></div>`);
       if (!parts.length) parts.push(`<div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Nog niet gehad</b> en niet op voorraad</span></div>`);
-      return `<div class="shop-person">${avatarHtml(o, 40)}<div class="grow stack" style="--gap:6px"><b>${esc(o.display_name)}</b>${parts.join("")}</div></div>`;
+      return `<div class="shop-person">${avatarHtml(o, 40)}<div class="grow stack" style="--gap:6px"><b>${o.self ? "Jij" : esc(o.display_name)}</b>${parts.join("")}</div></div>`;
     };
     res.innerHTML = `
       <div class="panel stack">
