@@ -467,6 +467,13 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .dup-choice .btn.on[data-choice="merge"] { box-shadow: 0 0 0 3px var(--gold); }
 .dup-choice .btn.on[data-choice="apart"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .auth-tabs.small-tabs { grid-auto-flow: column; grid-auto-columns: 1fr; }
+.stock-link b:empty { display: none; }
+.stock-link b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 4px; border-radius: 11px; background: var(--hop); color: #fff; font-size: .8rem; }
+.db-row.stock-row { grid-template-columns: 60px minmax(0, 1fr) auto; cursor: pointer; }
+.qty { display: flex; align-items: center; gap: 6px; }
+.qty b { min-width: 22px; text-align: center; font: 800 1.1rem var(--display); }
+.qty-btn { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); font: 700 1.1rem var(--body); cursor: pointer; color: var(--ink); }
+.qty-btn:hover { border-color: var(--hop); }
 .process-bar {
   position: sticky; bottom: 0; z-index: 5; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 12px 16px;
@@ -856,7 +863,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.7";
+const APP_VERSION = "2026-10-28.8";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1295,6 +1302,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
           ${intro ? `<p class="muted">${intro}</p>` : ""}
           </div>
         </div>
+        ${own && stockEnabled() ? `<a class="btn soft stock-link" href="#voorraad" id="stockLink">📦 Voorraad <b></b></a>` : ""}
       </div>
       ${groups.length ? `
         <div>
@@ -1346,6 +1354,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
         </div>`}
     </div>`;
 
+  if (own) updateStockLink();
   if (!groups.length) return;
 
   const draw = () => {
@@ -5567,6 +5576,145 @@ async function renderProcess() {
 }
 
 // ---------------------------------------------------------------------
+// Voorraad: bieren die je thuis hebt maar nog niet hebt ingecheckt
+// (voorlopig alleen voor beheerders)
+// ---------------------------------------------------------------------
+const stockEnabled = () => !!state.me?.is_admin;
+
+async function renderStock() {
+  setTab("lijst");
+  $("#pageTitle").textContent = "Voorraad";
+  if (!stockEnabled()) { view().innerHTML = `<p class="muted">De voorraad is nog niet beschikbaar.</p>`; return; }
+  let auto = true;
+  try { auto = localStorage.getItem("stockAuto") !== "0"; } catch {}
+  view().innerHTML = `
+    <div class="stack">
+      <p><a href="#lijst" class="small">← Mijn bieren</a></p>
+      <div>
+        <h1>Voorraad</h1>
+        <p class="muted">Bieren die je thuis hebt staan en nog niet hebt ingecheckt. Check je er een in, dan gaat hij vanzelf uit je voorraad.</p>
+      </div>
+      <div class="panel stack">
+        <h2>Toevoegen</h2>
+        ${barcodeToolsHtml(false)}
+        <div class="type-code">
+          <input class="input" id="stCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode">
+          <button class="btn ghost" type="button" id="stCodeBtn">Toevoegen</button>
+        </div>
+        <label class="check small"><input type="checkbox" id="stAuto" ${auto ? "checked" : ""}> Na toevoegen direct verder scannen</label>
+        <div id="stResult"></div>
+      </div>
+      <section class="stack">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+          <h2>Thuis</h2><span class="muted small" id="stCount"></span>
+        </div>
+        <div class="db-list" id="stList"><p class="muted small">Ophalen…</p></div>
+      </section>
+    </div>`;
+
+  let items = [], drunk = {};
+  const drawList = async () => {
+    const [{ data, error }, { data: mine }] = await Promise.all([
+      sb.from("stock").select("beer_id, qty, added_at, beer:beers(*)").eq("user_id", state.user.id).order("added_at", { ascending: false }),
+      sb.from("checkins").select("beer_id").eq("user_id", state.user.id),
+    ]);
+    if (error) { $("#stList").innerHTML = `<p class="error small">Laden lukte niet: ${esc(error.message)}</p>`; return; }
+    items = (data || []).filter(x => x.beer);
+    drunk = {};
+    for (const c of mine || []) drunk[c.beer_id] = (drunk[c.beer_id] || 0) + 1;
+    const total = items.reduce((n, x) => n + x.qty, 0);
+    $("#stCount").textContent = items.length ? `${total} ${total === 1 ? "flesje" : "flesjes"}, ${items.length} ${items.length === 1 ? "bier" : "bieren"}` : "";
+    $("#stList").innerHTML = items.length ? items.map(x => `
+      <div class="db-row stock-row" data-stock="${x.beer_id}">
+        ${photoBlock(x.beer.image_path, x.beer.style)}
+        <span class="db-body">
+          <b>${esc(x.beer.name)}</b>
+          <span class="beer-meta">${x.beer.brewery ? `<span>${esc(x.beer.brewery)}</span>` : ""}${x.beer.style ? `<span>${esc(x.beer.style)}</span>` : ""}${x.beer.abv != null ? `<span>${nf(x.beer.abv)}%</span>` : ""}</span>
+          <span class="tags">${drunk[x.beer_id] ? `<span class="tag on">Al ${drunk[x.beer_id]}× gedronken</span>` : `<span class="tag new">Nieuw voor jou</span>`}<span class="muted small">Sinds ${fmtDate(x.added_at)}</span></span>
+        </span>
+        <span class="qty">
+          <button type="button" class="qty-btn" data-dec="${x.beer_id}" aria-label="Eén minder">−</button>
+          <b>${x.qty}</b>
+          <button type="button" class="qty-btn" data-inc="${x.beer_id}" aria-label="Eén meer">+</button>
+        </span>
+      </div>`).join("") : `<p class="muted">Je voorraad is leeg. Scan een barcode om een bier toe te voegen.</p>`;
+    updateStockLink();
+  };
+
+  const setQty = async (beerId, qty) => {
+    if (qty <= 0) {
+      const x = items.find(i => i.beer_id === beerId);
+      if (!(await confirmDelete("Uit je voorraad halen?", `<p><b>${esc(x?.beer?.name || "Dit bier")}</b> gaat uit je voorraad. Het bier zelf blijft in de database.</p>`, "Ja, uit voorraad"))) return;
+      await sb.from("stock").delete().eq("user_id", state.user.id).eq("beer_id", beerId);
+    } else {
+      await sb.from("stock").update({ qty: Math.min(999, qty) }).eq("user_id", state.user.id).eq("beer_id", beerId);
+    }
+    drawList();
+  };
+  $("#stList").onclick = e => {
+    const inc = e.target.closest("[data-inc]"), dec = e.target.closest("[data-dec]");
+    if (inc || dec) {
+      const id = (inc || dec).dataset.inc || (inc || dec).dataset.dec;
+      const x = items.find(i => i.beer_id === id);
+      return setQty(id, x.qty + (inc ? 1 : -1));
+    }
+    const row = e.target.closest("[data-stock]");
+    if (row) { const x = items.find(i => i.beer_id === row.dataset.stock); if (x) showDbBeer(x.beer); }
+  };
+
+  // Een barcode verwerken
+  const res = $("#stResult");
+  const addCode = async code => {
+    res.innerHTML = `<p class="muted small">Barcode ${esc(code)} opzoeken in de database…</p>`;
+    const beer = await findBeerByCode(code);
+    if (!beer) {
+      res.innerHTML = `
+        <div class="notice stack" style="--gap:8px">
+          <div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Niet in de database.</b></span></div>
+          <p class="small">Barcode <b>${esc(code)}</b> staat nog niet in de database. Een bier moet eerst met barcode in de database staan voordat het in je voorraad kan.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn small" type="button" id="stNew">Bier toevoegen met deze barcode</button>
+            <button class="btn ghost small" type="button" id="stAgain">Verder scannen</button>
+          </div>
+        </div>`;
+      $("#stNew").onclick = () => { state.formPrefill = { barcode: code, source: "manual" }; location.hash = "database/nieuw"; };
+      $("#stAgain").onclick = () => { res.innerHTML = ""; startScan(onCode); };
+      return;
+    }
+    const cur = items.find(i => i.beer_id === beer.id);
+    const { error } = cur
+      ? await sb.from("stock").update({ qty: Math.min(999, cur.qty + 1) }).eq("user_id", state.user.id).eq("beer_id", beer.id)
+      : await sb.from("stock").insert({ beer_id: beer.id, qty: 1 });
+    if (error) { res.innerHTML = `<p class="error small">Toevoegen lukte niet: ${esc(error.message)}</p>`; return; }
+    if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+    res.innerHTML = `<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>${esc(beer.name)}</b>${beer.brewery ? `, ${esc(beer.brewery)}` : ""} toegevoegd${cur ? `; nu ${cur.qty + 1} in voorraad` : ""}.</span></div>`;
+    await drawList();
+    if ($("#stAuto").checked) setTimeout(() => { if (location.hash === "#voorraad") startScan(onCode); }, 1200);
+  };
+  const onCode = async code => { await stopScanner(); addCode(code); };
+  $("#scanBtn").onclick = () => startScan(onCode);
+  const typed = () => {
+    const c = cleanBarcode($("#stCode").value);
+    if (!validBarcode(c)) return toast("Deze barcode klopt niet. Controleer de cijfers onder de streepjes.");
+    $("#stCode").value = "";
+    addCode(c);
+  };
+  $("#stCodeBtn").onclick = typed;
+  $("#stCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); typed(); } };
+  $("#stAuto").onchange = e => { try { localStorage.setItem("stockAuto", e.target.checked ? "1" : "0"); } catch {} };
+  drawList();
+}
+
+// Knop bij Mijn bieren met het aantal flesjes
+async function updateStockLink() {
+  const a = $("#stockLink");
+  if (!a || !stockEnabled()) return;
+  const { data } = await sb.from("stock").select("qty").eq("user_id", state.user.id);
+  const n = (data || []).reduce((t, x) => t + x.qty, 0);
+  a.querySelector("b").textContent = n ? String(n) : "";
+}
+
+// ---------------------------------------------------------------------
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
@@ -6792,6 +6940,7 @@ async function route() {
   if (h === "beheer") return renderAdmin();
   if (h.startsWith("u/")) return renderUser(h.slice(2));
   if (h === "lijst") return renderMine();
+  if (h === "voorraad") return renderStock();
   return renderFeed();
 }
 window.addEventListener("hashchange", route);
