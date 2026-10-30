@@ -475,6 +475,10 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .shop-person .grow { flex: 1; min-width: 0; }
 .shop-beer { display: flex; gap: 12px; align-items: center; }
 .shop-beer .beer-photo { width: 64px; height: 64px; flex: none; }
+.score-card { display: grid; gap: 6px; width: 100%; text-align: left; cursor: pointer; padding: 10px 14px 12px; font: inherit; color: inherit; }
+.score-card-foot { display: flex; gap: 12px; align-items: baseline; flex-wrap: nowrap; white-space: nowrap; font-size: .92rem; }
+.score-card-foot > :last-child { margin-left: auto; }
+.score-card-foot b { font: 800 1.05rem var(--display); }
 .style-card { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer; padding: 12px 16px; font: inherit; color: inherit; }
 .style-card .grow { flex: 1; min-width: 0; }
 .style-card .chev { width: 20px; height: 20px; color: var(--muted); flex: none; }
@@ -939,7 +943,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-29.5";
+const APP_VERSION = "2026-10-29.7";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1382,12 +1386,16 @@ function renderCollection(groups, { title, intro, own, profile }) {
       </div>
       ${groups.length ? `
         ${(() => {
-          const st = styleStats(groups), top = st[0];
-          return `<button type="button" class="panel style-card" id="styleCard">
-            ${donutSvg(donutSlices(st), 76, 14)}
-            <span class="grow"><b>${groups.length} unieke ${groups.length === 1 ? "bier" : "bieren"} in ${st.length} ${st.length === 1 ? "stijl" : "stijlen"}</b><br>
-              <span class="muted small">Meest gedronken: ${esc(top.style)} (${top.count})</span></span>
-            <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+          const all = groups.flatMap(g => g.checkins);
+          const rated = all.filter(c => c.rating != null).map(c => Number(c.rating));
+          const avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
+          return `<button type="button" class="panel score-card" id="styleCard" aria-label="Scores en bierstijlen bekijken">
+            ${ratingChartSvg(rated, 78)}
+            <span class="score-card-foot">
+              <span><span class="muted small">Gemiddeld</span> <b>${avg != null ? "★ " + nf(avg, 2) : "–"}</b></span>
+              <span><span class="muted small">Zonder score</span> <b>${all.length - rated.length}</b></span>
+              <span class="muted small">Stijlen ›</span>
+            </span>
           </button>`;
         })()}
         ${(() => {
@@ -5195,6 +5203,40 @@ async function analyzeUntappd(file) {
     assignUntappdTimezones(todo, haveLookup);
     const tzCount = {};
     for (const r of todo) tzCount[r._tz] = (tzCount[r._tz] || 0) + 1;
+
+    // Check-ins die je óók in de app hebt gedaan (zelfde bier, bijna dezelfde tijd):
+    // die worden gekoppeld en aangevuld in plaats van dubbel aangemaakt
+    const appOnly = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from("checkins")
+        .select("id, beer_id, drunk_at, tz, rating, notes, serving, location_name, latitude, photo_path, flavors, with_names, beer:beers(id, name, brewery, untappd_id)")
+        .eq("user_id", state.user.id).is("untappd_checkin_id", null).range(from, from + 999);
+      if (error) break;
+      appOnly.push(...data);
+      if (data.length < 1000) break;
+    }
+    const WINDOW = 45 * 60 * 1000;   // tot 45 minuten verschil
+    const taken = new Set(), linkFromMatch = new Map(), twins = [];
+    for (const r of todo) {
+      const t = new Date(r._iso).getTime();
+      const near = appOnly.filter(c => !taken.has(c.id) && Math.abs(new Date(c.drunk_at).getTime() - t) <= WINDOW);
+      if (!near.length) continue;
+      const u = { bt: utToks(r.brewery_name || ""), nts: utNameVariants(r.beer_name).map(utToks) };
+      const sameBeer = c => (c.beer?.untappd_id && String(c.beer.untappd_id) === String(r.bid))
+        || untappdScore(u, { bt: utToks(c.beer?.brewery || ""), nt: utToks(c.beer?.name || "") }) >= 0.5;
+      let hit = near.filter(sameBeer).sort((a, b) => Math.abs(new Date(a.drunk_at) - t) - Math.abs(new Date(b.drunk_at) - t))[0];
+      // Eén check-in binnen 10 minuten en verder niets in de buurt: dat is hem, ook als de naam anders gespeld is
+      if (!hit) {
+        const close = near.filter(c => Math.abs(new Date(c.drunk_at).getTime() - t) <= 10 * 60 * 1000);
+        const otherUt = todo.filter(x => x !== r && Math.abs(new Date(x._iso).getTime() - t) <= 10 * 60 * 1000);
+        if (close.length === 1 && !otherUt.length) hit = close[0];
+      }
+      if (!hit) continue;
+      taken.add(hit.id);
+      r._match = hit;
+      twins.push(r);
+      if (hit.beer && !linkFromMatch.has(String(r.bid))) linkFromMatch.set(String(r.bid), hit.beer);
+    }
     const groups = new Map();
     for (const r of todo) {
       if (!groups.has(r.bid)) groups.set(r.bid, { bid: r.bid, name: r.beer_name, brewery: r.brewery_name, type: r.beer_type, abv: r.beer_abv, country: r.brewery_country, rows: [] });
@@ -5204,6 +5246,9 @@ async function analyzeUntappd(file) {
     for (const g of groups.values()) {
       const hit = byUntappd.get(String(g.bid));
       if (hit) { plan.known.push({ g, beer: hit }); continue; }
+      // Al in de app ingecheckt: dan is het dat bier
+      const viaApp = linkFromMatch.get(String(g.bid));
+      if (viaApp) { plan.sure.push({ g, beer: viaApp }); continue; }
       const u = { bt: utToks(g.brewery || ""), nts: utNameVariants(g.name).map(utToks) };
       let best = null, score = 0;
       for (const d of dbT) { const s = untappdScore(u, d); if (s > score) { score = s; best = d.b; if (s >= 1) break; } }
@@ -5230,7 +5275,8 @@ async function analyzeUntappd(file) {
       <div class="stack">
         <div class="panel">
           <ul class="import-sum">
-            <li><b>${todo.length}</b> check-ins om te importeren${rows.length - todo.length ? ` (${rows.length - todo.length} stonden er al in)` : ""}</li>
+            <li><b>${todo.length - twins.length}</b> check-ins om te importeren${rows.length - todo.length ? ` (${rows.length - todo.length} stonden er al in)` : ""}</li>
+            ${twins.length ? `<li><b>${twins.length}</b> ${twins.length === 1 ? "check-in heb" : "check-ins heb"} je ook al in de app gedaan; die worden gekoppeld en aangevuld, niet dubbel aangemaakt</li>` : ""}
             <li><b>${groups.size}</b> verschillende bieren, waarvan:</li>
             <li style="list-style:none;margin-left:12px">${plan.known.length + plan.sure.length} herkend in de database, ${plan.maybe.length} twijfelgevallen, ${plan.fresh.length} nieuw</li>
             <li>Tijden zoals ze daar waren, in ${Object.keys(tzCount).length === 1 ? "één tijdzone" : Object.keys(tzCount).length + " tijdzones"}: ${Object.entries(tzCount).sort((a, b) => b[1] - a[1]).map(([z, n]) => `${esc(z.split("/").pop().replace(/_/g, " "))} (${n})`).join(", ")}</li>
@@ -5238,6 +5284,15 @@ async function analyzeUntappd(file) {
           ${haveLookup ? "" : `<p class="small error" style="margin-top:8px">De tijdzones konden niet worden bepaald; alle tijden worden als Nederlandse tijd opgeslagen.</p>`}
           ${editor ? `<p class="muted small" style="margin-top:8px">Bij herkende bieren worden lege velden (stijl, alcohol, land) automatisch aangevuld met de gegevens van Untappd. Bestaande gegevens blijven staan, tenzij je bij een bier “Gegevens van Untappd overnemen” aanvinkt.</p>` : ""}
         </div>
+        ${twins.length ? `
+          <details class="panel">
+            <summary><b>Ook al in de app ingecheckt (${twins.length})</b></summary>
+            <p class="muted small" style="margin-top:8px">Zelfde bier en bijna dezelfde tijd. De check-in in de app krijgt het Untappd-nummer, en lege velden (score, notitie, smaken, met wie, locatie, serveerstijl, foto) worden aangevuld. Wat je in de app hebt ingevuld, blijft staan.</p>
+            <div class="table-scroll"><table class="preview">
+              <thead><tr><th>Untappd</th><th>In de app</th><th>Tijdverschil</th></tr></thead>
+              <tbody>${twins.map(r => `<tr><td>${esc(r.beer_name)}<br><span class="muted small">${fmtDate(r._iso, r._tz)}</span></td><td>${esc(r._match.beer?.name || "")}<br><span class="muted small">${fmtDate(r._match.drunk_at, r._match.tz)}</span></td><td>${Math.round(Math.abs(new Date(r._match.drunk_at) - new Date(r._iso)) / 60000)} min</td></tr>`).join("")}</tbody>
+            </table></div>
+          </details>` : ""}
         ${plan.maybe.length ? `
           <div class="panel stack">
             <h2>Twijfelgevallen (${plan.maybe.length})</h2>
@@ -5297,7 +5352,8 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
     // 1. Foto's: kopiëren en verkleinen, en anders linken
     const photoOf = new Map();
     if (withPhotos) {
-      const list = todo.filter(r => /^https:\/\//.test(r.photo_url || ""));
+      // Geen foto kopiëren voor een check-in die in de app al een foto heeft
+      const list = todo.filter(r => /^https:\/\//.test(r.photo_url || "") && !(r._match && r._match.photo_path));
       let canCopy = true, n = 0;
       for (const r of list) {
         let path = r.photo_url;
@@ -5371,7 +5427,26 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
     }
 
     // 4. Check-ins aanmaken
-    const all = todo.filter(r => beerOfBid.has(String(r.bid))).map(r => {
+    // 4a. Check-ins die al in de app staan: Untappd-nummer toevoegen en lege velden aanvullen
+    const twins = todo.filter(r => r._match);
+    result.linked = 0;
+    for (const r of twins) {
+      const c = r._match, loc = untappdLocation(r);
+      const rating = parseFloat(r.rating_score);
+      const patch = { untappd_checkin_id: Number(r.checkin_id) };
+      if (c.rating == null && isFinite(rating) && rating > 0) patch.rating = rating;
+      if (!c.notes && r.comment) patch.notes = clampChars(r.comment.trim(), 300);
+      if (!c.serving && untappdServing(r.serving_type)) patch.serving = untappdServing(r.serving_type);
+      if (!c.location_name && loc.name) Object.assign(patch, { location_name: loc.name, latitude: loc.lat, longitude: loc.lon });
+      if (!c.photo_path && photoOf.get(String(r.checkin_id))) patch.photo_path = photoOf.get(String(r.checkin_id));
+      if (!(c.flavors || []).length) { const f = untappdFlavors(r.flavor_profiles); if (f.length) patch.flavors = f; }
+      if (!(c.with_names || []).length) { const w = String(r.tagged_friends || "").split(",").map(x => x.trim()).filter(Boolean).slice(0, 20); if (w.length) patch.with_names = w; }
+      const { error } = await sb.from("checkins").update(patch).eq("id", c.id);
+      if (!error) result.linked++;
+      step("Bestaande check-ins koppelen", result.linked, twins.length);
+    }
+
+    const all = todo.filter(r => !r._match && beerOfBid.has(String(r.bid))).map(r => {
       const loc = untappdLocation(r);
       const rating = parseFloat(r.rating_score);
       return {
@@ -5394,12 +5469,13 @@ async function runUntappdImport(matched, fresh, todo, withPhotos) {
       result.checkins += data.length;
       step("Check-ins opslaan", Math.min(i + 100, all.length), all.length);
     }
-    result.failed = todo.length - all.length;
+    result.failed = todo.length - twins.length - all.length;
 
     prog.innerHTML = `
       <h2>Klaar. Proost!</h2>
       <ul class="import-sum">
         <li><b>${result.checkins}</b> check-ins geïmporteerd</li>
+        ${result.linked ? `<li><b>${result.linked}</b> ${result.linked === 1 ? "check-in" : "check-ins"} uit de app gekoppeld aan Untappd en aangevuld</li>` : ""}
         <li><b>${result.beersNew}</b> nieuwe bieren toegevoegd, <b>${result.beersLinked}</b> bestaande bieren gekoppeld aan Untappd</li>
         ${result.beersFilled ? `<li><b>${result.beersFilled}</b> ${result.beersFilled === 1 ? "bestaand bier" : "bestaande bieren"} aangevuld met gegevens van Untappd</li>` : ""}
         ${result.beersOverwritten ? `<li><b>${result.beersOverwritten}</b> ${result.beersOverwritten === 1 ? "bestaand bier" : "bestaande bieren"} bijgewerkt met de gegevens van Untappd</li>` : ""}
@@ -6124,10 +6200,10 @@ function donutSvg(slices, size, thick, center = "") {
     <g transform="rotate(-90 ${size / 2} ${size / 2})">${arcs}</g>${center}</svg>`;
 }
 // Verdeling van alle scores (0,25 tot 5,00) als vlakgrafiek
-function ratingChartSvg(ratings) {
+function ratingChartSvg(ratings, H = 120) {
   const steps = Array.from({ length: 20 }, (_, i) => (i + 1) / 4);
   const counts = steps.map(v => ratings.filter(r => Math.abs(Math.round(r * 4) / 4 - v) < 1e-6).length);
-  const W = 320, H = 120, pad = 10, top = 10, bottom = 22;
+  const W = 320, pad = 10, top = 8, bottom = 20;
   const max = Math.max(1, ...counts);
   const x = i => pad + (i / (steps.length - 1)) * (W - 2 * pad);
   const y = n => top + (1 - n / max) * (H - top - bottom);
@@ -6136,7 +6212,7 @@ function ratingChartSvg(ratings) {
   return `<svg class="rating-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Verdeling van je scores">
     <path d="M${x(0)},${base} L${pts.join(" L")} L${x(steps.length - 1)},${base} Z" fill="var(--hop)" opacity=".28"/>
     <polyline points="${pts.join(" ")}" fill="none" stroke="var(--hop)" stroke-width="2.2" stroke-linejoin="round"/>
-    ${counts.map((n, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(n).toFixed(1)}" r="3.2" fill="var(--hop)"><title>${nf(steps[i], 2)}: ${n} check-in${n === 1 ? "" : "s"}</title></circle>`).join("")}
+    ${counts.map((n, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(n).toFixed(1)}" r="${H < 100 ? 2.6 : 3.2}" fill="var(--hop)"><title>${nf(steps[i], 2)}: ${n} check-in${n === 1 ? "" : "s"}</title></circle>`).join("")}
     <text x="${x(0)}" y="${H - 4}" class="axis">0,25</text>
     <text x="${x(10)}" y="${H - 4}" class="axis" text-anchor="middle">2,75</text>
     <text x="${x(19)}" y="${H - 4}" class="axis" text-anchor="end">5,00</text>
