@@ -956,7 +956,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-30.5";
+const APP_VERSION = "2026-10-30.7";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -6560,19 +6560,14 @@ async function renderFeed(onlyId = null) {
   }
   view().innerHTML = `
     <div class="stack">
-      ${onlyId ? `<p><a href="#activiteit" class="small">← Naar de hele tijdlijn</a></p><h1>Check-in</h1>` : `<h1>Tijdlijn</h1>`}
-      ${state.me?.is_admin && !onlyId ? `
-      <div class="auth-tabs small-tabs" role="tablist">
-        <button role="tab" type="button" data-scope="friends" aria-selected="${feedState.scope !== "all"}">Vrienden</button>
-        <button role="tab" type="button" data-scope="all" aria-selected="${feedState.scope === "all"}">Beheer</button>
-      </div>` : ""}
+      ${onlyId ? `<p><a href="#activiteit" class="small">← Naar de hele tijdlijn</a></p>` : ""}
+
       ${feedState.items.length ? `<div class="feed" id="feed">${feedState.items.map(postHtml).join("")}</div>
         <button class="btn ghost block" id="moreBtn" type="button" ${feedState.done ? "hidden" : ""}>Eerdere check-ins laden</button>`
       : onlyId ? `<div class="panel empty"><h2>Deze check-in bestaat niet meer</h2><p class="muted">Misschien is hij verwijderd.</p></div>`
       : `<div class="panel empty">${glassSvg("var(--line)")}<h2>Nog geen check-ins</h2><p class="muted">Hier zie je je eigen check-ins en die van je vrienden. Tik op <b>+</b> rechtsboven om een bier in te checken.</p><p style="margin-top:16px"><a class="btn ghost" href="#vrienden">Vrienden zoeken</a></p></div>`}
     </div>`;
 
-  view().querySelectorAll("[data-scope]").forEach(b => b.onclick = () => { feedState.scope = b.dataset.scope; renderFeed(); });
   const more = $("#moreBtn");
   if (more) more.onclick = async () => {
     if (more.disabled) return;
