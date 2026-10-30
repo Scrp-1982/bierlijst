@@ -957,7 +957,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-30.8";
+const APP_VERSION = "2026-10-30.9";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -6862,7 +6862,7 @@ async function renderFriends() {
         </section>` : ""}
 
       <section class="stack">
-        <h2>Je vrienden</h2>
+        ${received.length ? `<h2>Je vrienden</h2>` : ""}
         ${friends.length
           ? `${stockEnabled() ? `<p class="muted small">Met het vinkje <b>Ziet mijn voorraad</b> kan een vriend in de Winkelscanner zien of je een bier al hebt gedronken of thuis hebt staan.</p>` : ""}
              <div class="people">${friends.map(p => row(p, `${stockEnabled() ? `<label class="check small share-toggle"><input type="checkbox" data-share="${p.id}" ${shares.has(p.id) ? "checked" : ""}> Ziet mijn voorraad</label>` : ""}<button class="btn ghost small" data-remove="${p.id}" data-confirm="${esc(p.display_name)} verwijderen als vriend?">Verwijderen</button>`, true)).join("")}</div>`
