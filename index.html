@@ -540,6 +540,13 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .chip-radio input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 2px; }
 .ci-when > summary { list-style: none; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
 .ci-when > summary::-webkit-details-marker { display: none; }
+.chosen-photo { position: relative; width: 60px; height: 60px; }
+.chosen-photo .beer-photo { width: 60px; height: 60px; }
+.new-burst { position: absolute; top: -22px; left: -24px; width: 78px; pointer-events: none; filter: drop-shadow(0 2px 3px rgba(0,0,0,.25)); }
+.new-burst svg { display: block; width: 100%; height: auto; }
+@media (prefers-reduced-motion: no-preference) { .new-burst:not([hidden]) { animation: burstIn .45s cubic-bezier(.2, 1.6, .4, 1); } }
+@keyframes burstIn { from { transform: scale(.2) rotate(-30deg); opacity: 0; } }
+.ci-stats { text-align: center; margin: 2px 0 0; }
 .chip-row.wrap { flex-wrap: wrap; overflow: visible; }
 .chip-input { margin-top: 6px; }
 .flavor-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -943,7 +950,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-29.7";
+const APP_VERSION = "2026-10-29.8";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -2269,11 +2276,10 @@ function renderCheckin() {
 
   const chosenHtml = d ? (d.beer ? `
       <div class="panel chosen">
-        ${photoBlock(d.beer.image_path, d.beer.style)}
+        <div class="chosen-photo">${photoBlock(d.beer.image_path, d.beer.style)}<span class="new-burst" id="newBurst" hidden aria-label="Nieuw voor jou">${NEW_BURST}</span></div>
         <div><h3>${esc(d.beer.name)}</h3><p class="muted small">${esc([d.beer.brewery, d.beer.style].filter(Boolean).join(", "))}</p></div>
         <button class="btn ghost small" id="changeBtn" type="button">Ander bier</button>
-      </div>
-      <div class="panel beer-stats" id="beerStats"><p class="muted small">Kijken wie dit al heeft gedronken…</p></div>` : `
+      </div>` : `
       <div class="panel stack">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <h2>Nieuw bier</h2>
@@ -2343,7 +2349,8 @@ function renderCheckin() {
       </details>
 
       <p class="error" id="checkinErr" hidden></p>
-      <div class="ci-submit-wrap"><button class="btn block ci-submit" type="submit" id="saveBtn">Check-in</button></div>` : ""}
+      <div class="ci-submit-wrap"><button class="btn block ci-submit" type="submit" id="saveBtn">Check-in</button></div>
+      ${d.beer ? `<p class="muted small ci-stats" id="ciStats"></p>` : ""}` : ""}
     </form>`;
 
   if (!d) {
@@ -2436,7 +2443,7 @@ function renderCheckin() {
   }
 
   $("#changeBtn").onclick = () => { state.draft = null; renderCheckin(); };
-  if (d.beer) loadBeerStats(d.beer);
+  if (d.beer) loadCheckinStats(d.beer);
 
   const ls = $("#linkSearch");
   if (ls) {
@@ -2615,6 +2622,29 @@ async function handleBarcode(code) {
   const found = await lookupBarcode(code);
   state.draft = found.beer ? { beer: found.beer } : { prefill: found.prefill };
   renderCheckin();
+}
+
+// NIEUW-logo (starburst) voor een bier dat je nog nooit hebt ingecheckt
+const NEW_BURST = `<svg viewBox="0 0 120 100" aria-hidden="true"><polygon points="58.6,8.0 67.2,28.3 85.3,11.0 78.4,30.3 102.5,21.9 85.0,40.6 118.9,43.5 88.3,51.4 116.5,68.7 84.1,64.0 90.1,82.6 71.9,71.6 74.9,89.8 61.0,76.6 49.3,95.5 45.8,71.1 26.5,80.6 37.9,64.5 8.5,64.7 29.5,53.8 7.4,45.1 31.0,39.7 12.3,25.3 38.4,29.8 37.2,10.9 55.5,27.6" fill="#F7941D" stroke="#fff" stroke-width="3" stroke-linejoin="round"/><text x="60" y="60" text-anchor="middle" transform="rotate(-14 60 52)" font-family="Impact, 'Arial Black', 'Archivo Black', sans-serif" font-weight="900" font-style="italic" font-size="27" fill="#0F2D4A" stroke="#fff" stroke-width=".6" letter-spacing=".5">NIEUW</text></svg>`;
+
+// Onderaan het incheckscherm, klein: hoe vaak jij en je vrienden dit bier hebben ingecheckt
+async function loadCheckinStats(beer) {
+  try {
+    const ids = [state.user.id, ...(await cachedFriendIds())];
+    const { data, error } = await sb.from("checkins").select("user_id").eq("beer_id", beer.id).in("user_id", ids);
+    if (error) throw error;
+    const mine = data.filter(c => c.user_id === state.user.id).length;
+    const fr = data.filter(c => c.user_id !== state.user.id);
+    const people = new Set(fr.map(c => c.user_id)).size;
+    if ($("#newBurst")) $("#newBurst").hidden = mine > 0;
+    const el = $("#ciStats");
+    if (!el) return;
+    el.innerHTML = `${mine ? `Jij: ${mine}× ingecheckt` : "Jij: nog nooit ingecheckt"} · ${people
+      ? `${people} ${people === 1 ? "vriend heeft" : "vrienden hebben"} hem ingecheckt <button type="button" class="linkish" id="ciStatsMore">bekijk</button>`
+      : "nog geen van je vrienden heeft hem ingecheckt"}`;
+    const more = $("#ciStatsMore");
+    if (more) more.onclick = async () => showFriendsDialog(beer, (await statsForBeers([beer.id]))[beer.id]);
+  } catch {}
 }
 
 async function loadBeerStats(beer) {
