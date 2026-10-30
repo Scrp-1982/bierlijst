@@ -877,6 +877,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
   div.user-row { grid-template-columns: minmax(0, 1fr) auto; }
   div.user-row .role-switches { flex-direction: column; align-items: flex-end; gap: 6px; }
 }
+#view h1.dup-title { display: none; }
 </style>
 </head>
 <body>
@@ -956,7 +957,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-30.7";
+const APP_VERSION = "2026-10-30.8";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1125,6 +1126,19 @@ function stars(r) {
   if (r == null) return `<span class="muted small">Geen score</span>`;
   return `<span class="stars" style="--r:${Number(r)}" aria-label="${nf(r, 2)} van 5">★★★★★</span>`;
 }
+
+// Grote kop verbergen als die precies hetzelfde zegt als de titel bovenin de balk
+const sameTitle = (a, b) => {
+  const n = x => String(x || "").trim().toLowerCase().replace(/^mijn\s+/, "");
+  return n(a) && n(a) === n(b);
+};
+function hideDuplicateTitle() {
+  const t = $("#pageTitle")?.textContent;
+  const h = view().querySelector("h1");
+  if (h) h.classList.toggle("dup-title", sameTitle(h.textContent, t));
+}
+new MutationObserver(hideDuplicateTitle).observe(document.getElementById("view"), { childList: true, subtree: true });
+new MutationObserver(hideDuplicateTitle).observe(document.getElementById("pageTitle"), { childList: true, characterData: true, subtree: true });
 
 const PAGE_TITLES = {
   activiteit: "Tijdlijn", lijst: "Mijn bieren", vrienden: "Vrienden", meldingen: "Meldingen", inchecken: "Inchecken",
