@@ -869,7 +869,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.10";
+const APP_VERSION = "2026-10-29.1";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -5585,7 +5585,7 @@ async function renderProcess() {
 // Voorraad: bieren die je thuis hebt maar nog niet hebt ingecheckt
 // (voorlopig alleen voor beheerders)
 // ---------------------------------------------------------------------
-const stockEnabled = () => !!state.me?.is_admin;
+const stockEnabled = () => !!(state.me?.is_admin || state.me?.has_stock);
 
 async function renderStock() {
   setTab("lijst");
@@ -5731,32 +5731,25 @@ async function sharedOwners() {
 async function updateShopLink() {
   const a = $("#shopLink");
   if (!a || !state.user) return;
-  if (stockEnabled()) { a.hidden = false; return; }   // met een eigen voorraad: altijd
-  const { count } = await sb.from("stock_shares").select("owner", { count: "exact", head: true }).eq("viewer", state.user.id);
-  a.hidden = !count;
+  a.hidden = false;   // de Winkelscanner is er voor iedereen
 }
 
 async function renderShop() {
   setTab("winkel");
-  view().innerHTML = `<div class="loading">Even kijken wie zijn voorraad met je deelt…</div>`;
-  // Jijzelf eerst (als je een voorraad hebt), daarna wie zijn voorraad met je deelt
-  const shared = await sharedOwners();
-  const owners = [...(stockEnabled() ? [{ ...state.me, id: state.user.id, self: true }] : []), ...shared];
-  if (!owners.length) {
-    view().innerHTML = `<div class="panel empty"><h2>Nog niemand deelt zijn voorraad</h2><p class="muted">Als een vriend je toegang geeft tot zijn voorraad, kun je hier in de winkel een bier scannen en zien of hij het al heeft.</p></div>`;
-    return;
-  }
-  const others = shared.map(o => esc(o.display_name));
-  const who = stockEnabled()
-    ? (others.length ? `jij en ${others.join(" en ")}` : "jij")
-    : others.join(" en ");
+  view().innerHTML = `<div class="loading">Je vrienden ophalen…</div>`;
+  const ids = await cachedFriendIds();
+  const [{ data: profs }, shared] = await Promise.all([
+    ids.length ? sb.from("profiles").select("id, display_name, avatar_path").in("id", ids) : Promise.resolve({ data: [] }),
+    sharedOwners(),
+  ]);
+  const friends = (profs || []).sort((x, y) => (x.display_name || "").localeCompare(y.display_name || "", "nl"));
+  const sharedIds = new Set(shared.map(o => o.id));
+  const me = { ...state.me, id: state.user.id, self: true };
   view().innerHTML = `
     <div class="stack">
       <div>
         <h1>Winkelscanner</h1>
-        <p class="muted">${owners.length === 1 && stockEnabled()
-          ? "Scan een bier en zie of je het al hebt gedronken of thuis hebt staan."
-          : `Scan een bier en zie of ${who} het al ${owners.length === 1 ? "heeft" : "hebben"} gedronken of thuis ${owners.length === 1 ? "heeft" : "hebben"} staan.`}</p>
+        <p class="muted">Scan een bier en zie of je het al hebt gedronken${stockEnabled() ? " of thuis hebt staan" : ""}, en welke vrienden het al hebben gehad.${sharedIds.size ? " Van vrienden die hun voorraad met je delen, zie je ook of ze het thuis hebben." : ""}</p>
       </div>
       <div class="panel stack">
         ${barcodeToolsHtml(false)}
@@ -5771,12 +5764,13 @@ async function renderShop() {
   const res = $("#shResult");
   const showStatus = async beer => {
     res.innerHTML = `<p class="muted small">Opzoeken…</p>`;
-    const ids = owners.map(o => o.id);
+    const people = [me.id, ...friends.map(f => f.id)];
+    const stockIds = [...(stockEnabled() ? [me.id] : []), ...sharedIds];
     const [{ data: cks }, { data: st }] = await Promise.all([
-      sb.from("checkins").select("user_id, rating, drunk_at, tz").eq("beer_id", beer.id).in("user_id", ids).order("drunk_at", { ascending: false }),
-      sb.from("stock").select("user_id, qty").eq("beer_id", beer.id).in("user_id", ids),
+      sb.from("checkins").select("user_id, rating, drunk_at, tz").eq("beer_id", beer.id).in("user_id", people).order("drunk_at", { ascending: false }),
+      stockIds.length ? sb.from("stock").select("user_id, qty").eq("beer_id", beer.id).in("user_id", stockIds) : Promise.resolve({ data: [] }),
     ]);
-    const line = o => {
+    const lineFor = o => {
       const mine = (cks || []).filter(c => c.user_id === o.id);
       const qty = (st || []).find(x => x.user_id === o.id)?.qty || 0;
       const rated = mine.filter(c => c.rating != null).map(c => Number(c.rating));
@@ -5784,13 +5778,19 @@ async function renderShop() {
       const parts = [];
       if (mine.length) parts.push(`<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>Al gedronken</b> (${mine.length}×, laatst op ${fmtDate(mine[0].drunk_at, mine[0].tz)}${avg != null ? `, gemiddeld ${nf(avg, 2)}` : ""})</span></div>`);
       if (qty) parts.push(`<div class="src-line web"><span class="src-ic" aria-hidden="true">📦</span><span><b>Op voorraad</b> (${qty} ${qty === 1 ? "flesje" : "flesjes"})</span></div>`);
-      if (!parts.length) parts.push(`<div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Nog niet gehad</b> en niet op voorraad</span></div>`);
+      if (!parts.length) parts.push(`<div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Nog niet gehad</b>${o.self && stockEnabled() ? " en niet op voorraad" : ""}</span></div>`);
       return `<div class="shop-person">${avatarHtml(o, 40)}<div class="grow stack" style="--gap:6px"><b>${o.self ? "Jij" : esc(o.display_name)}</b>${parts.join("")}</div></div>`;
     };
+    const has = f => (cks || []).some(c => c.user_id === f.id) || (st || []).some(x => x.user_id === f.id);
+    const withIt = friends.filter(has), without = friends.length - withIt.length;
     res.innerHTML = `
       <div class="panel stack">
         <div class="shop-beer">${photoBlock(beer.image_path, beer.style)}<div><h2>${esc(beer.name)}</h2><p class="muted small">${esc([beer.brewery, beer.style, beer.abv != null ? nf(beer.abv) + "%" : ""].filter(Boolean).join(", "))}</p></div></div>
-        ${owners.map(line).join("")}
+        ${lineFor(me)}
+        ${withIt.map(lineFor).join("")}
+        ${friends.length ? `<p class="muted small" style="border-top:1px solid var(--line);padding-top:10px;margin:0">${withIt.length
+          ? (without ? `${without} ${without === 1 ? "andere vriend heeft" : "andere vrienden hebben"} dit bier nog niet gehad.` : "Al je vrienden hebben dit bier gehad.")
+          : `Geen van je ${friends.length} ${friends.length === 1 ? "vriend heeft" : "vrienden hebben"} dit bier al gehad.`}</p>` : ""}
         <button class="btn soft block" type="button" id="shNext">Volgende bier scannen</button>
       </div>`;
     $("#shNext").onclick = () => { res.innerHTML = ""; startScan(onCode); };
@@ -6411,7 +6411,7 @@ async function renderAdmin() {
   const [{ data: users, error: uErr }, { data: invites }, { data: profs }] = await Promise.all([
     sb.rpc("admin_list_users"),
     sb.from("invites").select("*").order("created_at", { ascending: false }),
-    sb.from("profiles").select("id, display_name, avatar_path, username"),
+    sb.from("profiles").select("id, display_name, avatar_path, username, has_stock"),
   ]);
   const profById = Object.fromEntries((profs || []).map(p => [p.id, p]));
   const open = (invites || []).filter(i => !i.accepted_at);
@@ -6476,6 +6476,10 @@ async function renderAdmin() {
                 <span>Database</span>
                 <input type="checkbox" data-dbeditor="${u.id}" ${u.is_db_editor || u.is_admin ? "checked" : ""} ${u.is_admin || u.is_blocked ? "disabled" : ""}>
               </label>
+              <label class="switch admin-switch" title="Krijgt een eigen voorraad bij Mijn bieren en kan die delen met vrienden">
+                <span>Voorraad</span>
+                <input type="checkbox" data-stockflag="${u.id}" ${profById[u.id]?.has_stock || u.is_admin ? "checked" : ""} ${u.is_admin || u.is_blocked ? "disabled" : ""}>
+              </label>
             </div>
             ${me ? "" : `
             <div class="user-actions">
@@ -6510,6 +6514,14 @@ async function renderAdmin() {
   };
 
   view().onchange = async e => {
+    const sf = e.target.closest("[data-stockflag]");
+    if (sf) {
+      sf.disabled = true;
+      const { error } = await sb.rpc("admin_set_stock", { target: sf.dataset.stockflag, value: sf.checked });
+      sf.disabled = false;
+      if (error) { sf.checked = !sf.checked; return toast(error.message); }
+      return toast(sf.checked ? "Heeft nu een eigen voorraad" : "Heeft geen voorraad meer");
+    }
     const ed = e.target.closest("[data-dbeditor]");
     if (ed) {
       ed.disabled = true;
