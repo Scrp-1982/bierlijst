@@ -469,7 +469,7 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .auth-tabs.small-tabs { grid-auto-flow: column; grid-auto-columns: 1fr; }
 .stock-link b:empty { display: none; }
 .stock-link b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 4px; border-radius: 11px; background: var(--hop); color: #fff; font-size: .8rem; }
-.db-row.stock-row { grid-template-columns: 60px minmax(0, 1fr) auto; cursor: pointer; }
+.db-row.stock-row { grid-template-columns: 60px minmax(0, 1fr) auto; cursor: pointer; align-items: center; }
 .share-toggle { white-space: nowrap; align-self: center; }
 .shop-person { display: flex; gap: 12px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 12px; }
 .shop-person .grow { flex: 1; min-width: 0; }
@@ -950,7 +950,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-29.9";
+const APP_VERSION = "2026-10-30.1";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -5996,8 +5996,7 @@ async function renderStock() {
     items = (data || []).filter(x => x.beer);
     drunk = {};
     for (const c of mine || []) drunk[c.beer_id] = (drunk[c.beer_id] || 0) + 1;
-    const total = items.reduce((n, x) => n + x.qty, 0);
-    $("#stCount").textContent = items.length ? `${total} ${total === 1 ? "flesje" : "flesjes"}, ${items.length} ${items.length === 1 ? "bier" : "bieren"}` : "";
+    $("#stCount").textContent = items.length ? `${items.length} ${items.length === 1 ? "bier" : "bieren"}` : "";
     $("#stList").innerHTML = items.length ? items.map(x => `
       <div class="db-row stock-row" data-stock="${x.beer_id}">
         ${photoBlock(x.beer.image_path, x.beer.style)}
@@ -6006,31 +6005,18 @@ async function renderStock() {
           <span class="beer-meta">${x.beer.brewery ? `<span>${esc(x.beer.brewery)}</span>` : ""}${x.beer.style ? `<span>${esc(x.beer.style)}</span>` : ""}${x.beer.abv != null ? `<span>${nf(x.beer.abv)}%</span>` : ""}</span>
           <span class="tags">${drunk[x.beer_id] ? `<span class="tag on">Al ${drunk[x.beer_id]}× gedronken</span>` : `<span class="tag new">Nieuw voor jou</span>`}<span class="muted small">Sinds ${fmtDate(x.added_at)}</span></span>
         </span>
-        <span class="qty">
-          <button type="button" class="qty-btn" data-dec="${x.beer_id}" aria-label="Eén minder">−</button>
-          <b>${x.qty}</b>
-          <button type="button" class="qty-btn" data-inc="${x.beer_id}" aria-label="Eén meer">+</button>
-        </span>
+        <button type="button" class="qty-btn" data-remove="${x.beer_id}" aria-label="${esc(x.beer.name)} uit je voorraad halen" title="Uit voorraad">×</button>
       </div>`).join("") : `<p class="muted">Je voorraad is leeg. Scan een barcode om een bier toe te voegen.</p>`;
     updateStockLink();
   };
 
-  const setQty = async (beerId, qty) => {
-    if (qty <= 0) {
-      const x = items.find(i => i.beer_id === beerId);
+  $("#stList").onclick = async e => {
+    const rm = e.target.closest("[data-remove]");
+    if (rm) {
+      const x = items.find(i => i.beer_id === rm.dataset.remove);
       if (!(await confirmDelete("Uit je voorraad halen?", `<p><b>${esc(x?.beer?.name || "Dit bier")}</b> gaat uit je voorraad. Het bier zelf blijft in de database.</p>`, "Ja, uit voorraad"))) return;
-      await sb.from("stock").delete().eq("user_id", state.user.id).eq("beer_id", beerId);
-    } else {
-      await sb.from("stock").update({ qty: Math.min(999, qty) }).eq("user_id", state.user.id).eq("beer_id", beerId);
-    }
-    drawList();
-  };
-  $("#stList").onclick = e => {
-    const inc = e.target.closest("[data-inc]"), dec = e.target.closest("[data-dec]");
-    if (inc || dec) {
-      const id = (inc || dec).dataset.inc || (inc || dec).dataset.dec;
-      const x = items.find(i => i.beer_id === id);
-      return setQty(id, x.qty + (inc ? 1 : -1));
+      await sb.from("stock").delete().eq("user_id", state.user.id).eq("beer_id", rm.dataset.remove);
+      return drawList();
     }
     const row = e.target.closest("[data-stock]");
     if (row) { const x = items.find(i => i.beer_id === row.dataset.stock); if (x) showDbBeer(x.beer); }
@@ -6056,12 +6042,14 @@ async function renderStock() {
       return;
     }
     const cur = items.find(i => i.beer_id === beer.id);
-    const { error } = cur
-      ? await sb.from("stock").update({ qty: Math.min(999, cur.qty + 1) }).eq("user_id", state.user.id).eq("beer_id", beer.id)
-      : await sb.from("stock").insert({ beer_id: beer.id, qty: 1 });
-    if (error) { res.innerHTML = `<p class="error small">Toevoegen lukte niet: ${esc(error.message)}</p>`; return; }
-    if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
-    res.innerHTML = `<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>${esc(beer.name)}</b>${beer.brewery ? `, ${esc(beer.brewery)}` : ""} toegevoegd${cur ? `; nu ${cur.qty + 1} in voorraad` : ""}.</span></div>`;
+    if (cur) {
+      res.innerHTML = `<div class="src-line web"><span class="src-ic" aria-hidden="true">📦</span><span><b>${esc(beer.name)}</b> staat al in je voorraad.</span></div>`;
+    } else {
+      const { error } = await sb.from("stock").insert({ beer_id: beer.id, qty: 1 });
+      if (error) { res.innerHTML = `<p class="error small">Toevoegen lukte niet: ${esc(error.message)}</p>`; return; }
+      if (navigator.vibrate) navigator.vibrate([40, 40, 40]);
+      res.innerHTML = `<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>${esc(beer.name)}</b>${beer.brewery ? `, ${esc(beer.brewery)}` : ""} toegevoegd aan je voorraad.</span></div>`;
+    }
     await drawList();
     if ($("#stAuto").checked) setTimeout(() => { if (location.hash === "#voorraad") startScan(onCode); }, 1200);
   };
@@ -6083,8 +6071,8 @@ async function renderStock() {
 async function updateStockLink() {
   const a = $("#stockLink");
   if (!a || !stockEnabled()) return;
-  const { data } = await sb.from("stock").select("qty").eq("user_id", state.user.id);
-  const n = (data || []).reduce((t, x) => t + x.qty, 0);
+  const { data } = await sb.from("stock").select("beer_id").eq("user_id", state.user.id);
+  const n = (data || []).length;
   a.querySelector("b").textContent = n ? String(n) : "";
 }
 
@@ -6145,7 +6133,7 @@ async function renderShop() {
       const avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
       const parts = [];
       if (mine.length) parts.push(`<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>Al gedronken</b> (${mine.length}×, laatst op ${fmtDate(mine[0].drunk_at, mine[0].tz)}${avg != null ? `, gemiddeld ${nf(avg, 2)}` : ""})</span></div>`);
-      if (qty) parts.push(`<div class="src-line web"><span class="src-ic" aria-hidden="true">📦</span><span><b>Op voorraad</b> (${qty} ${qty === 1 ? "flesje" : "flesjes"})</span></div>`);
+      if (qty) parts.push(`<div class="src-line web"><span class="src-ic" aria-hidden="true">📦</span><span><b>Op voorraad</b>${o.self ? ", thuis" : ""}</span></div>`);
       if (!parts.length) parts.push(`<div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Nog niet gehad</b>${o.self && stockEnabled() ? " en niet op voorraad" : ""}</span></div>`);
       return `<div class="shop-person">${avatarHtml(o, 40)}<div class="grow stack" style="--gap:6px"><b>${o.self ? "Jij" : esc(o.display_name)}</b>${parts.join("")}</div></div>`;
     };
