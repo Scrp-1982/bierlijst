@@ -950,7 +950,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-29.8";
+const APP_VERSION = "2026-10-29.9";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1405,18 +1405,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
             </span>
           </button>`;
         })()}
-        ${(() => {
-          const earned = earnedSorted(computeBadges(groups.flatMap(g => g.checkins.map(c => ({ ...c, beer: g.beer })))));
-          if (!earned.length) return "";
-          const link = state.user ? `#badges${own ? "" : "/" + profile?.id}` : "";
-          return `<section>
-            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
-              <h2>Badges</h2>
-              ${link ? `<a href="${link}" class="small">Alle ${earned.length} bekijken</a>` : `<span class="muted small">${earned.length} verdiend</span>`}
-            </div>
-            <div class="badge-strip" style="margin-top:8px">${earned.slice(0, 10).map(b => badgeHtml(b, true)).join("")}</div>
-          </section>`;
-        })()}
+        <div id="badgeStripBox">${badgeStripHtml(groups, own, profile, {})}</div>
         <div class="stats">
           <div><b>${groups.length}</b><span>unieke bieren</span></div>
           <div><b>${total}</b><span>check-ins</span></div>
@@ -1449,6 +1438,16 @@ function renderCollection(groups, { title, intro, own, profile }) {
     </div>`;
 
   if (own) updateStockLink();
+  // Proosten en reacties ophalen, zodat ook die badges in de strook en het aantal meetellen
+  const ownerId = own ? state.user?.id : profile?.id;
+  let listSocial = {};
+  if (state.user && ownerId && groups.length) {
+    fetchSocial(ownerId).then(social => {
+      listSocial = social || {};
+      const box = $("#badgeStripBox");
+      if (box && document.body.contains(box)) box.innerHTML = badgeStripHtml(groups, own, profile, social);
+    });
+  }
   if (!groups.length) return;
 
   const draw = () => {
@@ -1516,7 +1515,7 @@ function renderCollection(groups, { title, intro, own, profile }) {
   view().onclick = e => {
     const bd = e.target.closest("[data-badge]");
     if (!bd) return;
-    const all = computeBadges(groups.flatMap(g => g.checkins.map(c => ({ ...c, beer: g.beer }))));
+    const all = computeBadges(groups.flatMap(g => g.checkins.map(c => ({ ...c, beer: g.beer }))), listSocial);
     showBadgeDialog(all.find(x => x.key === bd.dataset.badge));
   };
   $("#beerList").addEventListener("click", e => {
@@ -3037,6 +3036,21 @@ const BADGE_FAMILIES = {
   cheersReceived: { cat: "sociaal", name: "Populair", emoji: "🥳", t: [1, 10, 50, 100, 250], desc: many("Krijg je eerste proost", "Krijg # keer een proost") },
   comments:       { cat: "sociaal", name: "Kletskous", emoji: "💬", t: [1, 10, 50, 100], desc: many("Plaats je eerste reactie", "Plaats # reacties") },
 };
+
+// Badgestrook op een bierlijst. Telt ook de badges voor proosten en reageren mee,
+// zodat het aantal klopt met de badgepagina.
+function badgeStripHtml(groups, own, profile, social) {
+  const earned = earnedSorted(computeBadges(groups.flatMap(g => g.checkins.map(c => ({ ...c, beer: g.beer }))), social));
+  if (!earned.length) return "";
+  const link = state.user ? `#badges${own ? "" : "/" + profile?.id}` : "";
+  return `<section>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+      <h2>Badges</h2>
+      ${link ? `<a href="${link}" class="small">Alle ${earned.length} bekijken</a>` : `<span class="muted small">${earned.length} verdiend</span>`}
+    </div>
+    <div class="badge-strip" style="margin-top:8px">${earned.slice(0, 10).map(b => badgeHtml(b, true)).join("")}</div>
+  </section>`;
+}
 
 function computeBadges(checkins, extra = {}) {
   const sorted = [...checkins].filter(c => c.beer).sort((a, b) => a.drunk_at.localeCompare(b.drunk_at));
