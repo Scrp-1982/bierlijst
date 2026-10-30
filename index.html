@@ -470,6 +470,11 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .stock-link b:empty { display: none; }
 .stock-link b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 4px; border-radius: 11px; background: var(--hop); color: #fff; font-size: .8rem; }
 .db-row.stock-row { grid-template-columns: 60px minmax(0, 1fr) auto; cursor: pointer; }
+.share-toggle { white-space: nowrap; align-self: center; }
+.shop-person { display: flex; gap: 12px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 12px; }
+.shop-person .grow { flex: 1; min-width: 0; }
+.shop-beer { display: flex; gap: 12px; align-items: center; }
+.shop-beer .beer-photo { width: 64px; height: 64px; flex: none; }
 .qty { display: flex; align-items: center; gap: 6px; }
 .qty b { min-width: 22px; text-align: center; font: 800 1.1rem var(--display); }
 .qty-btn { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); font: 700 1.1rem var(--body); cursor: pointer; color: var(--ink); }
@@ -812,6 +817,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 
 <div class="backdrop" id="backdrop"></div>
 <nav class="drawer" id="drawer" aria-label="Hoofdmenu">
+  <a href="#winkel" data-tab="winkel" id="shopLink" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/><circle cx="10" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>Winkelscanner</a>
   <a href="#verzamel" data-tab="verzamel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Snel scannen</a>
   <a href="#database" data-tab="database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Bierdatabase</a>
   <a href="#badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>Badges</a>
@@ -863,7 +869,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-28.8";
+const APP_VERSION = "2026-10-28.9";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1035,7 +1041,7 @@ function stars(r) {
 
 const PAGE_TITLES = {
   activiteit: "Tijdlijn", lijst: "Mijn bieren", vrienden: "Vrienden", meldingen: "Meldingen", inchecken: "Inchecken",
-  verzamel: "Snel scannen", database: "Bierdatabase", badges: "Badges", profiel: "Profiel",
+  verzamel: "Snel scannen", winkel: "Winkelscanner", voorraad: "Voorraad", database: "Bierdatabase", badges: "Badges", profiel: "Profiel",
   controleren: "Controleren", beheer: "Beheer",
 };
 function setTab(name) {
@@ -1054,7 +1060,7 @@ function setNav(loggedIn) {
   $("#menuBtn").hidden = !loggedIn;
   $("#tabbar").hidden = !loggedIn;
   document.body.classList.toggle("has-tabbar", !!loggedIn);
-  if (loggedIn) { $("#tabAvatar").innerHTML = avatarHtml(state.me, 26); updateBadges(); }
+  if (loggedIn) { $("#tabAvatar").innerHTML = avatarHtml(state.me, 26); updateBadges(); updateShopLink(); }
   if (!loggedIn) closeMenu();
   $("#adminGroup").hidden = !state.me?.is_admin;
   if (loggedIn && state.me?.is_admin) updateReviewCount();
@@ -5715,6 +5721,116 @@ async function updateStockLink() {
 }
 
 // ---------------------------------------------------------------------
+// Winkelscanner: zien of vrienden (die hun voorraad met jou delen) een bier
+// al hebben gedronken of op voorraad hebben
+// ---------------------------------------------------------------------
+async function sharedOwners() {
+  const { data } = await sb.from("stock_shares").select("owner, prof:profiles!stock_shares_owner_fkey(id, display_name, avatar_path)").eq("viewer", state.user.id);
+  return (data || []).map(r => r.prof).filter(Boolean);
+}
+async function updateShopLink() {
+  const a = $("#shopLink");
+  if (!a || !state.user) return;
+  const { count } = await sb.from("stock_shares").select("owner", { count: "exact", head: true }).eq("viewer", state.user.id);
+  a.hidden = !count;
+}
+
+async function renderShop() {
+  setTab("winkel");
+  view().innerHTML = `<div class="loading">Even kijken wie zijn voorraad met je deelt…</div>`;
+  const owners = await sharedOwners();
+  if (!owners.length) {
+    view().innerHTML = `<div class="panel empty"><h2>Nog niemand deelt zijn voorraad</h2><p class="muted">Als een vriend je toegang geeft tot zijn voorraad, kun je hier in de winkel een bier scannen en zien of hij het al heeft.</p></div>`;
+    return;
+  }
+  const names = owners.map(o => esc(o.display_name)).join(" en ");
+  view().innerHTML = `
+    <div class="stack">
+      <div>
+        <h1>Winkelscanner</h1>
+        <p class="muted">Scan een bier en zie of ${names} het al ${owners.length === 1 ? "heeft" : "hebben"} gedronken of thuis ${owners.length === 1 ? "heeft" : "hebben"} staan.</p>
+      </div>
+      <div class="panel stack">
+        ${barcodeToolsHtml(false)}
+        <div class="type-code">
+          <input class="input" id="shCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode">
+          <button class="btn ghost" type="button" id="shCodeBtn">Opzoeken</button>
+        </div>
+      </div>
+      <div id="shResult"></div>
+    </div>`;
+
+  const res = $("#shResult");
+  const showStatus = async beer => {
+    res.innerHTML = `<p class="muted small">Opzoeken…</p>`;
+    const ids = owners.map(o => o.id);
+    const [{ data: cks }, { data: st }] = await Promise.all([
+      sb.from("checkins").select("user_id, rating, drunk_at, tz").eq("beer_id", beer.id).in("user_id", ids).order("drunk_at", { ascending: false }),
+      sb.from("stock").select("user_id, qty").eq("beer_id", beer.id).in("user_id", ids),
+    ]);
+    const line = o => {
+      const mine = (cks || []).filter(c => c.user_id === o.id);
+      const qty = (st || []).find(x => x.user_id === o.id)?.qty || 0;
+      const rated = mine.filter(c => c.rating != null).map(c => Number(c.rating));
+      const avg = rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null;
+      const parts = [];
+      if (mine.length) parts.push(`<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span><b>Al gedronken</b> (${mine.length}×, laatst op ${fmtDate(mine[0].drunk_at, mine[0].tz)}${avg != null ? `, gemiddeld ${nf(avg, 2)}` : ""})</span></div>`);
+      if (qty) parts.push(`<div class="src-line web"><span class="src-ic" aria-hidden="true">📦</span><span><b>Op voorraad</b> (${qty} ${qty === 1 ? "flesje" : "flesjes"})</span></div>`);
+      if (!parts.length) parts.push(`<div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Nog niet gehad</b> en niet op voorraad</span></div>`);
+      return `<div class="shop-person">${avatarHtml(o, 40)}<div class="grow stack" style="--gap:6px"><b>${esc(o.display_name)}</b>${parts.join("")}</div></div>`;
+    };
+    res.innerHTML = `
+      <div class="panel stack">
+        <div class="shop-beer">${photoBlock(beer.image_path, beer.style)}<div><h2>${esc(beer.name)}</h2><p class="muted small">${esc([beer.brewery, beer.style, beer.abv != null ? nf(beer.abv) + "%" : ""].filter(Boolean).join(", "))}</p></div></div>
+        ${owners.map(line).join("")}
+        <button class="btn soft block" type="button" id="shNext">Volgende bier scannen</button>
+      </div>`;
+    $("#shNext").onclick = () => { res.innerHTML = ""; startScan(onCode); };
+  };
+
+  const lookup = async code => {
+    res.innerHTML = `<p class="muted small">Barcode ${esc(code)} opzoeken…</p>`;
+    const beer = await findBeerByCode(code);
+    if (beer) return showStatus(beer);
+    // Barcode onbekend: op naam zoeken
+    res.innerHTML = `
+      <div class="panel stack">
+        <div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span><b>Barcode ${esc(code)} is onbekend in de database.</b></span></div>
+        <p class="small">Misschien staat het bier er wel in, maar zonder deze barcode. Zoek het op naam:</p>
+        <input class="input" type="search" id="shFind" placeholder="Naam, brouwerij of stijl, bijv. uiltje ipa" autocomplete="off">
+        <div class="results" id="shFound"></div>
+      </div>`;
+    let t, found = [];
+    $("#shFind").oninput = () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        const q = $("#shFind").value;
+        if (searchWords(q).length === 0) { $("#shFound").innerHTML = ""; return; }
+        const { data } = await withWords(sb.from("beers").select("*"), q).order("name").limit(12);
+        found = data || [];
+        $("#shFound").innerHTML = found.length ? found.map(b => `
+          <button type="button" class="result" data-shbeer="${b.id}">
+            <span><b>${esc(b.name)}</b><br><span class="muted small">${esc([b.brewery, b.style].filter(Boolean).join(", "))}</span></span>
+            <span class="muted small">Kies</span>
+          </button>`).join("") : `<p class="muted small">Niets gevonden.</p>`;
+      }, 250);
+    };
+    $("#shFound").onclick = e => { const r = e.target.closest("[data-shbeer]"); if (r) showStatus(found.find(b => b.id === r.dataset.shbeer)); };
+    $("#shFind").focus();
+  };
+  const onCode = async code => { await stopScanner(); lookup(code); };
+  $("#scanBtn").onclick = () => startScan(onCode);
+  const typed = () => {
+    const c = cleanBarcode($("#shCode").value);
+    if (!validBarcode(c)) return toast("Deze barcode klopt niet. Controleer de cijfers onder de streepjes.");
+    $("#shCode").value = "";
+    lookup(c);
+  };
+  $("#shCodeBtn").onclick = typed;
+  $("#shCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); typed(); } };
+}
+
+// ---------------------------------------------------------------------
 // Activiteit: alle check-ins met reacties
 // ---------------------------------------------------------------------
 const FEED_PAGE = 20;
@@ -6157,6 +6273,12 @@ async function renderFriends() {
     relation[other] = r.status === "accepted" ? "friend" : (r.requester === me ? "sent" : "received");
   }
   const byRel = rel => people.filter(p => relation[p.id] === rel);
+  // Met wie deel ik mijn voorraad?
+  const shares = new Set();
+  if (stockEnabled()) {
+    const { data: sh } = await sb.from("stock_shares").select("viewer").eq("owner", state.user.id);
+    for (const r of sh || []) shares.add(r.viewer);
+  }
   const friends = byRel("friend"), received = byRel("received"), sent = byRel("sent");
   const others = people.filter(p => !relation[p.id]);
   const uniq = id => counts[id] ? `${counts[id].size} unieke bieren` : (relation[id] === "friend" ? "0 unieke bieren" : "");
@@ -6185,7 +6307,8 @@ async function renderFriends() {
       <section class="stack">
         <h2>Je vrienden</h2>
         ${friends.length
-          ? `<div class="people">${friends.map(p => row(p, `<button class="btn ghost small" data-remove="${p.id}" data-confirm="${esc(p.display_name)} verwijderen als vriend?">Verwijderen</button>`, true)).join("")}</div>`
+          ? `${stockEnabled() ? `<p class="muted small">Met het vinkje <b>Ziet mijn voorraad</b> kan een vriend in de Winkelscanner zien of je een bier al hebt gedronken of thuis hebt staan.</p>` : ""}
+             <div class="people">${friends.map(p => row(p, `${stockEnabled() ? `<label class="check small share-toggle"><input type="checkbox" data-share="${p.id}" ${shares.has(p.id) ? "checked" : ""}> Ziet mijn voorraad</label>` : ""}<button class="btn ghost small" data-remove="${p.id}" data-confirm="${esc(p.display_name)} verwijderen als vriend?">Verwijderen</button>`, true)).join("")}</div>`
           : `<p class="muted">Je hebt nog geen vrienden. Stuur hieronder een verzoek aan een ander lid. In Activiteit zie je alleen je eigen check-ins en die van je vrienden.</p>`}
       </section>
 
@@ -6205,6 +6328,19 @@ async function renderFriends() {
         <div class="people" id="findResults"></div>
       </section>
     </div>`;
+
+  view().onchange = async e => {
+    const cb = e.target.closest("[data-share]");
+    if (!cb) return;
+    cb.disabled = true;
+    const viewer = cb.dataset.share;
+    const { error } = cb.checked
+      ? await sb.from("stock_shares").insert({ viewer })
+      : await sb.from("stock_shares").delete().eq("owner", state.user.id).eq("viewer", viewer);
+    cb.disabled = false;
+    if (error) { cb.checked = !cb.checked; return toast("Dat lukte niet: " + error.message); }
+    toast(cb.checked ? "Deze vriend kan nu je voorraad zien" : "Deze vriend ziet je voorraad niet meer");
+  };
 
   $("#findForm").onsubmit = async e => {
     e.preventDefault();
@@ -6941,6 +7077,7 @@ async function route() {
   if (h.startsWith("u/")) return renderUser(h.slice(2));
   if (h === "lijst") return renderMine();
   if (h === "voorraad") return renderStock();
+  if (h === "winkel") return renderShop();
   return renderFeed();
 }
 window.addEventListener("hashchange", route);
