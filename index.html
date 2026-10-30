@@ -498,6 +498,8 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .rating-chart .axis { font: 600 10px var(--body); fill: var(--muted); }
 .rating-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; text-align: center; }
 .rating-sum b { font: 800 1.2rem var(--display); }
+.rank-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rank-head h3 { margin: 0; }
 .rank-list { display: grid; gap: 4px; }
 .rank-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-top: 1px solid var(--line); }
 .rank-row:first-child { border-top: 0; }
@@ -950,7 +952,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-30.1";
+const APP_VERSION = "2026-10-30.3";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -6254,7 +6256,8 @@ function ratingChartSvg(ratings, H = 120) {
 function showStyleDialog(groups, onPick) {
   const stats = styleStats(groups), slices = donutSlices(stats);
   const total = groups.length;
-  const ranked = stats.filter(x => x.avg != null).sort((a, b) => (b.count > 1) - (a.count > 1) || b.avg - a.avg || b.count - a.count);
+  // Van best naar minst goed beoordeeld; bij gelijke score eerst de stijl met meer bieren
+  const ranked = stats.filter(x => x.avg != null).sort((a, b) => b.avg - a.avg || b.count - a.count);
   openDialog(`
     <div class="stack">
       <h2>Bierstijlen</h2>
@@ -6282,15 +6285,31 @@ function showStyleDialog(groups, onPick) {
             </div>
           </div>`;
       })()}
-      <h3>Best beoordeelde stijlen</h3>
-      <div class="rank-list">${ranked.map((x, i) => `
-        <div class="rank-row ${x.count === 1 ? "single" : ""}">
-          <span class="rank-n">${i + 1}</span>
-          <span class="grow"><b>${esc(x.style)}</b><br><span class="muted small">${x.count} ${x.count === 1 ? "bier" : "bieren"}</span></span>
-          <span class="fc-score">${stars(x.avg)}<b>${nf(x.avg, 2)}</b></span>
-        </div>`).join("") || `<p class="muted">Nog geen scores.</p>`}</div>
-      ${ranked.some(x => x.count === 1) ? `<p class="muted small">Stijlen met maar één bier staan onderaan.</p>` : ""}
+      <div class="rank-head">
+        <h3>Best beoordeelde stijlen</h3>
+        ${ranked.some(x => x.count === 1) ? `<label class="check small"><input type="checkbox" id="rankSingles"> Stijlen met 1 bier tonen</label>` : ""}
+      </div>
+      <div class="rank-list" id="rankList"></div>
     </div>`);
+  // Lijst met stijlen; stijlen met maar één bier kun je verbergen (keuze wordt onthouden)
+  let showSingles = true;
+  try { showSingles = localStorage.getItem("rankSingles") !== "0"; } catch {}
+  const drawRank = () => {
+    const list = ranked.filter(x => showSingles || x.count > 1);
+    $("#rankList").innerHTML = list.map((x, i) => `
+      <div class="rank-row">
+        <span class="rank-n">${i + 1}</span>
+        <span class="grow"><b>${esc(x.style)}</b><br><span class="muted small">${x.count} ${x.count === 1 ? "bier" : "bieren"}</span></span>
+        <span class="fc-score">${stars(x.avg)}<b>${nf(x.avg, 2)}</b></span>
+      </div>`).join("") || `<p class="muted">Nog geen scores.</p>`;
+  };
+  const tg = $("#rankSingles");
+  if (tg) {
+    tg.checked = showSingles;
+    tg.onchange = () => { showSingles = tg.checked; try { localStorage.setItem("rankSingles", showSingles ? "1" : "0"); } catch {} drawRank(); };
+  }
+  drawRank();
+
   $("#dlgBody").onclick = e => {
     const b = e.target.closest("[data-pickstyle]");
     if (!b) return;
