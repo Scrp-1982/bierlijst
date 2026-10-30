@@ -470,6 +470,10 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .stock-link b:empty { display: none; }
 .stock-link b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 4px; border-radius: 11px; background: var(--hop); color: #fff; font-size: .8rem; }
 .db-row.stock-row { grid-template-columns: 60px minmax(0, 1fr) auto; cursor: pointer; align-items: center; }
+.sh-link { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
+.sh-link p { margin: 0; }
+.or-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .85rem; }
+.or-line::before, .or-line::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
 .share-toggle { white-space: nowrap; align-self: center; }
 .shop-person { display: flex; gap: 12px; align-items: flex-start; border-top: 1px solid var(--line); padding-top: 12px; }
 .shop-person .grow { flex: 1; min-width: 0; }
@@ -952,7 +956,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-30.3";
+const APP_VERSION = "2026-10-30.5";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -6115,12 +6119,15 @@ async function renderShop() {
           <input class="input" id="shCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode">
           <button class="btn ghost" type="button" id="shCodeBtn">Opzoeken</button>
         </div>
+        <div class="or-line"><span>of zoek op naam</span></div>
+        <input class="input" type="search" id="shName" placeholder="Naam, brouwerij of stijl, bijv. uiltje ipa" autocomplete="off" aria-label="Zoek op naam">
+        <div class="results" id="shNameResults"></div>
       </div>
       <div id="shResult"></div>
     </div>`;
 
   const res = $("#shResult");
-  const showStatus = async beer => {
+  const showStatus = async (beer, pendingCode = null, viaName = false) => {
     res.innerHTML = `<p class="muted small">Opzoeken…</p>`;
     const people = [me.id, ...friends.map(f => f.id)];
     const stockIds = [...(stockEnabled() ? [me.id] : []), ...sharedIds];
@@ -6149,10 +6156,74 @@ async function renderShop() {
         ${friends.length ? `<p class="muted small" style="border-top:1px solid var(--line);padding-top:10px;margin:0">${withIt.length
           ? (without ? `${without} ${without === 1 ? "andere vriend heeft" : "andere vrienden hebben"} dit bier nog niet gehad.` : "Al je vrienden hebben dit bier gehad.")
           : `Geen van je ${friends.length} ${friends.length === 1 ? "vriend heeft" : "vrienden hebben"} dit bier al gehad.`}</p>` : ""}
+        ${viaName ? `<div class="sh-link" id="shLink">
+          ${pendingCode
+            ? `<button class="btn block" type="button" id="shLinkGo">Barcode ${esc(pendingCode)} aan dit bier koppelen</button>`
+            : `<button class="btn soft block" type="button" id="shLinkScan">📷 Barcode scannen en koppelen</button>`}
+          <p class="muted small">Dan herkent de scanner dit bier de volgende keer meteen.</p>
+        </div>` : ""}
         <button class="btn soft block" type="button" id="shNext">Volgende bier scannen</button>
       </div>`;
     $("#shNext").onclick = () => { res.innerHTML = ""; startScan(onCode); };
+    // Barcode koppelen aan het op naam gevonden bier
+    const link = async code => {
+      const box = $("#shLink");
+      box.innerHTML = `<p class="muted small">Barcode ${esc(code)} koppelen…</p>`;
+      const owner = await findBeerByCode(code);
+      if (owner) {
+        box.innerHTML = owner.id === beer.id
+          ? `<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span>Barcode ${esc(code)} hoort al bij dit bier.</span></div>`
+          : `<div class="src-line no"><span class="src-ic" aria-hidden="true">✗</span><span>Barcode ${esc(code)} hoort al bij <b>${esc(owner.name)}</b>, dus is niet gekoppeld.</span></div>`;
+        return;
+      }
+      const { error } = await sb.rpc("link_barcode", { beer: beer.id, code });
+      box.innerHTML = error
+        ? `<p class="error small">Koppelen lukte niet: ${esc(error.message)}</p>`
+        : `<div class="src-line ok"><span class="src-ic" aria-hidden="true">✓</span><span>Barcode ${esc(code)} gekoppeld aan <b>${esc(beer.name)}</b>${state.me?.is_admin ? "" : "; de beheerder controleert het nog"}.</span></div>`;
+      if (!error && navigator.vibrate) navigator.vibrate([40, 40, 40]);
+    };
+    const go = $("#shLinkGo");
+    if (go) go.onclick = () => link(pendingCode);
+    const sc = $("#shLinkScan");
+    if (sc) sc.onclick = () => {
+      $("#shLink").insertAdjacentHTML("afterbegin", `<p class="muted small">Richt de camera op de barcode van ${esc(beer.name)}.</p>`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      startScan(async code => { await stopScanner(); link(code); res.scrollIntoView({ behavior: "smooth", block: "start" }); });
+    };
   };
+
+  // Zoeken op naam: elk woord apart, met een vinkje bij bieren die je al hebt gedronken
+  const nameSearch = (input, out, code = null) => {
+    let t, found = [], seq = 0;
+    input.oninput = () => {
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        const my = ++seq, q = input.value;
+        if (!searchWords(q).length) { out.innerHTML = ""; return; }
+        const { data } = await withWords(sb.from("beers").select("*"), q).order("name").limit(15);
+        if (my !== seq) return;
+        found = data || [];
+        let drunk = new Set();
+        if (found.length) {
+          const { data: mine } = await sb.from("checkins").select("beer_id").eq("user_id", state.user.id).in("beer_id", found.map(b => b.id));
+          drunk = new Set((mine || []).map(c => c.beer_id));
+        }
+        out.innerHTML = found.length ? found.map(b => `
+          <button type="button" class="result" data-shbeer="${b.id}">
+            <span><b>${esc(b.name)}</b><br><span class="muted small">${esc([b.brewery, b.style].filter(Boolean).join(", "))}</span></span>
+            ${drunk.has(b.id) ? `<span class="tag on">✓ Gehad</span>` : `<span class="tag new">Nieuw</span>`}
+          </button>`).join("") : `<p class="muted small">Niets gevonden in de database.</p>`;
+      }, 250);
+    };
+    out.onclick = e => {
+      const r = e.target.closest("[data-shbeer]");
+      if (!r) return;
+      out.innerHTML = ""; input.value = "";
+      showStatus(found.find(b => b.id === r.dataset.shbeer), code, true);
+      res.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  };
+  nameSearch($("#shName"), $("#shNameResults"));
 
   const lookup = async code => {
     res.innerHTML = `<p class="muted small">Barcode ${esc(code)} opzoeken…</p>`;
@@ -6166,22 +6237,7 @@ async function renderShop() {
         <input class="input" type="search" id="shFind" placeholder="Naam, brouwerij of stijl, bijv. uiltje ipa" autocomplete="off">
         <div class="results" id="shFound"></div>
       </div>`;
-    let t, found = [];
-    $("#shFind").oninput = () => {
-      clearTimeout(t);
-      t = setTimeout(async () => {
-        const q = $("#shFind").value;
-        if (searchWords(q).length === 0) { $("#shFound").innerHTML = ""; return; }
-        const { data } = await withWords(sb.from("beers").select("*"), q).order("name").limit(12);
-        found = data || [];
-        $("#shFound").innerHTML = found.length ? found.map(b => `
-          <button type="button" class="result" data-shbeer="${b.id}">
-            <span><b>${esc(b.name)}</b><br><span class="muted small">${esc([b.brewery, b.style].filter(Boolean).join(", "))}</span></span>
-            <span class="muted small">Kies</span>
-          </button>`).join("") : `<p class="muted small">Niets gevonden.</p>`;
-      }, 250);
-    };
-    $("#shFound").onclick = e => { const r = e.target.closest("[data-shbeer]"); if (r) showStatus(found.find(b => b.id === r.dataset.shbeer)); };
+    nameSearch($("#shFind"), $("#shFound"), code);
     $("#shFind").focus();
   };
   const onCode = async code => { await stopScanner(); lookup(code); };
