@@ -962,7 +962,7 @@ body.typing.has-tabbar { padding-bottom: 0; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-31.1";
+const APP_VERSION = "2026-10-31.3";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1145,7 +1145,7 @@ function hideDuplicateTitle() {
 new MutationObserver(hideDuplicateTitle).observe(document.getElementById("view"), { childList: true, subtree: true });
 new MutationObserver(hideDuplicateTitle).observe(document.getElementById("pageTitle"), { childList: true, characterData: true, subtree: true });
 
-// Toetsenbord open: balken onderin tijdelijk verbergen
+// Toetsenbord open: balken onderin tijdelijk verbergen, voor meer ruimte
 const isTypingField = el => el && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "file", "range", "hidden"].includes(el.type)) || el.isContentEditable);
 document.addEventListener("focusin", e => { if (isTypingField(e.target) && matchMedia("(pointer: coarse)").matches) document.body.classList.add("typing"); });
 document.addEventListener("focusout", () => setTimeout(() => { if (!isTypingField(document.activeElement)) document.body.classList.remove("typing"); }, 50));
