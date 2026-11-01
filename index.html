@@ -470,6 +470,9 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .stock-link b:empty { display: none; }
 .stock-link b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 4px; border-radius: 11px; background: var(--hop); color: #fff; font-size: .8rem; }
 .db-row.stock-row { grid-template-columns: 60px minmax(0, 1fr) auto; cursor: pointer; align-items: center; }
+.new-beer-actions { display: flex; gap: 10px; position: sticky; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); background: var(--surface); padding: 10px 0 4px; z-index: 4; }
+body.typing .new-beer-actions { bottom: 0; }
+.new-beer-actions .btn { flex: 1; }
 .sh-link { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 12px; }
 .sh-link p { margin: 0; }
 .or-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .85rem; }
@@ -878,6 +881,8 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
   div.user-row .role-switches { flex-direction: column; align-items: flex-end; gap: 6px; }
 }
 #view h1.dup-title { display: none; }
+body.typing .tabbar, body.typing .process-bar, body.typing .merge-bar, body.typing .dup-bar { display: none; }
+body.typing.has-tabbar { padding-bottom: 0; }
 </style>
 </head>
 <body>
@@ -957,7 +962,7 @@ div.user-row .role-switches { flex-direction: row; align-items: center; gap: 18p
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-30.9";
+const APP_VERSION = "2026-10-31.1";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1139,6 +1144,11 @@ function hideDuplicateTitle() {
 }
 new MutationObserver(hideDuplicateTitle).observe(document.getElementById("view"), { childList: true, subtree: true });
 new MutationObserver(hideDuplicateTitle).observe(document.getElementById("pageTitle"), { childList: true, characterData: true, subtree: true });
+
+// Toetsenbord open: balken onderin tijdelijk verbergen
+const isTypingField = el => el && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !["checkbox", "radio", "button", "submit", "file", "range", "hidden"].includes(el.type)) || el.isContentEditable);
+document.addEventListener("focusin", e => { if (isTypingField(e.target) && matchMedia("(pointer: coarse)").matches) document.body.classList.add("typing"); });
+document.addEventListener("focusout", () => setTimeout(() => { if (!isTypingField(document.activeElement)) document.body.classList.remove("typing"); }, 50));
 
 const PAGE_TITLES = {
   activiteit: "Tijdlijn", lijst: "Mijn bieren", vrienden: "Vrienden", meldingen: "Meldingen", inchecken: "Inchecken",
@@ -5829,6 +5839,7 @@ async function renderProcess() {
     if (!r) return;
     chosen = results.find(b => b.id === r.dataset.pick) || null;
     $("#pNew").hidden = true;
+    $("#pBar").hidden = false;
     drawChosen();
   };
 
@@ -5928,7 +5939,7 @@ async function renderProcess() {
     box.hidden = false;
     document.querySelectorAll("[data-pick]").forEach(r => r.classList.remove("on"));
     $("#pMerge").classList.add("dim");
-    $("#pChosen").innerHTML = "<b>Nieuw bier:</b> vul de gegevens in en tik op Bier toevoegen";
+    $("#pBar").hidden = true;   // alleen Bier toevoegen of Annuleren in het formulier
     box.innerHTML = `
       <form class="stack new-beer-form" id="pNewForm" novalidate>
         <h2>Nieuw bier</h2>
@@ -5936,13 +5947,13 @@ async function renderProcess() {
         ${beerFields(pre)}
         ${inboxPhotoChoice(current, null, true)}
         <p class="error" id="pNewErr" hidden></p>
-        <div style="display:flex;gap:10px">
+        <div class="new-beer-actions">
           <button class="btn" type="submit">Bier toevoegen</button>
           <button class="btn ghost" type="button" id="pNewCancel">Annuleren</button>
         </div>
       </form>`;
     setTimeout(() => box.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-    $("#pNewCancel").onclick = () => { box.hidden = true; drawChosen(); };
+    $("#pNewCancel").onclick = () => { box.hidden = true; $("#pBar").hidden = false; drawChosen(); };
     $("#pNewForm").onsubmit = async e => {
       e.preventDefault();
       const err = $("#pNewErr"); err.hidden = true;
