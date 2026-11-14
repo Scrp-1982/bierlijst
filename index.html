@@ -469,6 +469,16 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .auth-tabs.small-tabs { grid-auto-flow: column; grid-auto-columns: 1fr; }
 .stock-link b:empty { display: none; }
 .stock-link b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 4px; border-radius: 11px; background: var(--hop); color: #fff; font-size: .8rem; }
+.collect { max-width: 520px; margin: 0 auto; width: 100%; }
+.collect-step { justify-items: stretch; }
+.collect-big { min-height: 64px; font-size: 1.15rem; gap: 10px; }
+.collect-big svg { width: 26px; height: 26px; }
+.collect-code { text-align: center; font-size: 1.15rem; margin: 0; }
+.collect-step .linkish { align-self: center; margin: 0 auto; color: var(--muted); }
+.collect-sent > summary { cursor: pointer; }
+.db-head-actions { display: flex; gap: 8px; flex-wrap: nowrap; }
+@media (max-width: 560px) { .db-head-actions .btn { padding: 0 12px; min-height: 40px; font-size: .9rem; white-space: nowrap; } .db-head-actions .btn svg { margin-right: 4px; } }
+.db-head-actions .btn svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }
 .db-row.stock-row { grid-template-columns: 60px minmax(0, 1fr) auto; cursor: pointer; align-items: center; }
 .new-beer-actions { display: flex; gap: 10px; position: sticky; bottom: calc(70px + env(safe-area-inset-bottom, 0px)); background: var(--surface); padding: 10px 0 4px; z-index: 4; }
 body.typing .new-beer-actions { bottom: 0; }
@@ -911,7 +921,6 @@ body.typing.has-tabbar { padding-bottom: 0; }
 <div class="backdrop" id="backdrop"></div>
 <nav class="drawer" id="drawer" aria-label="Hoofdmenu">
   <a href="#winkel" data-tab="winkel" id="shopLink" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6"/><circle cx="10" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>Winkelscanner</a>
-  <a href="#verzamel" data-tab="verzamel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Snel scannen</a>
   <a href="#database" data-tab="database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="8" ry="3"/><path d="M4 5.5v13c0 1.7 3.6 3 8 3s8-1.3 8-3v-13"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Bierdatabase</a>
   <a href="#badges" data-tab="badges"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>Badges</a>
   <a href="#profiel" data-tab="profiel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4.2 4.2-6.5 8-6.5s7 2.3 8 6.5"/></svg>Profiel</a>
@@ -962,7 +971,7 @@ body.typing.has-tabbar { padding-bottom: 0; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-10-31.3";
+const APP_VERSION = "2026-11-14.5";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1152,7 +1161,7 @@ document.addEventListener("focusout", () => setTimeout(() => { if (!isTypingFiel
 
 const PAGE_TITLES = {
   activiteit: "Tijdlijn", lijst: "Mijn bieren", vrienden: "Vrienden", meldingen: "Meldingen", inchecken: "Inchecken",
-  verzamel: "Snel scannen", winkel: "Winkelscanner", voorraad: "Voorraad", database: "Bierdatabase", badges: "Badges", profiel: "Profiel",
+  verzamel: "Barcodes insturen", winkel: "Winkelscanner", voorraad: "Voorraad", database: "Bierdatabase", badges: "Badges", profiel: "Profiel",
   controleren: "Controleren", beheer: "Beheer",
 };
 function setTab(name) {
@@ -2274,12 +2283,18 @@ function bindTorch(stream) {
   };
 }
 
+// Alleen op de winkelpagina's blijft de camera even warm (snel achter elkaar scannen);
+// overal anders gaat hij na de scan direct helemaal uit
+const WARM_PAGES = ["#verzamel", "#winkel"];
+const keepCameraWarm = () => WARM_PAGES.includes(location.hash);
+
 async function stopScanner() {
   const sc = state.scanner;
   if (!sc) return;
   state.scanner = null;
   clearTimeout(sc.timer);
-  pauseCamera(sc.stream);
+  if (keepCameraWarm()) pauseCamera(sc.stream);
+  else { sc.stream?.getTracks().forEach(t => t.stop()); releaseCamera(); }
   const r = $("#reader");
   if (r) { r.innerHTML = ""; r.hidden = true; }
 }
@@ -3965,7 +3980,10 @@ async function renderDatabase() {
           <h1>Bierdatabase</h1>
           <p class="muted">${total ?? 0} bieren, waarvan ${withCode ?? 0} met barcode</p>
         </div>
-        <a class="btn" href="#database/nieuw">Bier toevoegen</a>
+        <div class="db-head-actions">
+          <a class="btn soft" href="#verzamel" title="Scan barcodes en stuur ze in; een beheerder voegt ze toe aan de database"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>Barcodes insturen</a>
+          <a class="btn" href="#database/nieuw">Bier toevoegen</a>
+        </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn soft small" href="#barcodes">Barcodes koppelen</a>
@@ -4411,8 +4429,9 @@ async function renderBarcodes() {
   view().innerHTML = `
     <div class="stack">
       <div>
-        <p><a href="#database" class="small">Terug naar de bierdatabase</a></p>
+        <p><a href="#database" class="small">← Bierdatabase</a></p>
         <h1>Barcodes koppelen</h1>
+        <p class="muted">Weet je bij welk bier een barcode hoort? Koppel hem hier meteen aan dat bier. Sta je in de winkel, of weet je het niet zeker? Gebruik dan <a href="#verzamel">Barcodes insturen</a>; een beheerder zoekt het dan later uit.</p>
       </div>
       <div class="panel stack" id="bcProgress"></div>
       <div class="auth-tabs" role="tablist" style="max-width:420px">
@@ -4715,7 +4734,7 @@ async function mergeTwoBeers(a, b) {
 // Controleren, tabblad Dubbel?: voorstellen voor bieren die waarschijnlijk dubbel zijn
 // ---------------------------------------------------------------------
 const DUP_GENERIC = /\b(bierbrouwerij|brouwerij|brouwerijen|brasserie|brasseries|brewery|breweries|brewing|brewers|brauerei|privatbrauerei|brauhaus|bryggeri|bryggerierne|birrificio|cerveceria|cervejaria|company|co|inc|ltd|llc|gmbh|ag|bv|nv|sa|kg|the|de|het|and|en|of|koninklijke|group|groupe)\b/g;
-const DUP_EXTRA = new Set(["bier", "beer", "biere", "trappist", "trappiste", "abdij", "abbey", "abbaye", "abdijbier"]);
+const DUP_EXTRA = new Set(["bier", "beer", "biere", "cerveza", "cerveja", "birra", "pivo", "piwo", "ol", "trappist", "trappiste", "abdij", "abbey", "abbaye", "abdijbier"]);
 const dupBrew = s => foldTxt(s).replace(/[^a-z0-9]+/g, " ").replace(DUP_GENERIC, " ").replace(/\s+/g, " ").trim();
 const dupName = s => foldTxt(s).replace(/(\d)[.,](\d)/g, "$1$2").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 function dupCore(b) {
@@ -5580,122 +5599,108 @@ async function fetchInbox(ownOnly = false) {
 
 async function renderCollect() {
   setTab("verzamel");
-  let photoFile = null, code = null;
+  document.querySelectorAll("#drawer a").forEach(a => a.classList.toggle("on", a.dataset.tab === "database"));
+  let code = null;
   view().innerHTML = `
-    <div class="stack">
-      <div>
-        <h1>Snel scannen</h1>
-        <p class="muted">Scan een barcode, voeg eventueel een foto en omschrijving toe, en bewaar. Een beheerder verwerkt ze later in de bierdatabase.</p>
-      </div>
-      <form class="panel stack" id="collectForm" novalidate>
-        <h2>Barcode <span class="req">verplicht</span></h2>
-        ${barcodeToolsHtml()}
-        <div class="type-code">
-          <input class="input" id="colCode" inputmode="numeric" autocomplete="off" placeholder="Barcode intypen" aria-label="Barcode">
-          <button class="btn ghost" type="button" id="colCodeBtn">Gebruiken</button>
-        </div>
-        <div id="colCodeBox" class="col-code" hidden></div>
-
-        <h2 style="margin-top:6px">Foto <span class="muted small" style="font-weight:400">optioneel</span></h2>
-        <div class="photo-pick">
-          <img id="colPhotoPreview" alt="" hidden>
-          ${photoButtons("colPhoto")}
-        </div>
-
-        <label class="field"><span>Omschrijving <span class="muted small" style="font-weight:400">optioneel</span></span>
-          ${limitedTextarea("note", 300, "", 'placeholder="Bijv. naam op het etiket, winkel, prijs…"')}
-        </label>
-        <p class="error" id="colErr" hidden></p>
-        <button class="btn block" type="submit" id="colSave">Bewaren en volgende</button>
-      </form>
-      <section class="stack">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
-          <h2>Ingestuurd, nog niet verwerkt</h2>
-          <span class="muted small" id="colCount"></span>
-        </div>
-        <div class="db-list" id="colList"><p class="muted small">Ophalen…</p></div>
-      </section>
+    <div class="stack collect">
+      <div class="panel stack collect-step" id="colStep"></div>
+      <p class="error" id="colErr" hidden></p>
+      <details class="panel collect-sent">
+        <summary><b>Ingestuurd</b> <span class="muted small" id="colCount"></span></summary>
+        <div class="db-list" id="colList" style="margin-top:10px"></div>
+      </details>
     </div>`;
 
-  const setCode = async c => {
-    code = c;
-    const box = $("#colCodeBox");
-    box.hidden = false;
-    box.innerHTML = `<b>${esc(c)}</b> <span class="muted small">opzoeken…</span>`;
-    const known = await findBeerByCode(c);
-    if (code !== c) return;
-    box.innerHTML = known
-      ? `<b>${esc(c)}</b><br><span class="small">Staat al in de database: <b>${esc(known.name)}</b>${known.brewery ? `, ${esc(known.brewery)}` : ""}. Bewaren is alleen nodig als je er bijvoorbeeld een foto bij wilt doen.</span>`
-      : `<b>${esc(c)}</b><br><span class="small ok">Nieuw: nog niet bekend in de database.</span>`;
-  };
-  const onCode = async c => { await stopScanner(); await setCode(c); };
-  $("#scanBtn").onclick = () => startScan(onCode);
-  bindBarcodePhoto(onCode);
-  const typed = () => {
-    const c = cleanBarcode($("#colCode").value);
-    if (!validBarcode(c)) return toast("Deze barcode klopt niet. Controleer de cijfers onder de streepjes.");
-    $("#colCode").value = "";
-    setCode(c);
-  };
-  $("#colCodeBtn").onclick = typed;
-  $("#colCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); typed(); } };
-  $("#colPhoto").onchange = e => {
-    photoFile = e.target.files[0] || null;
-    if (photoFile) { const img = $("#colPhotoPreview"); img.src = URL.createObjectURL(photoFile); img.hidden = false; }
-  };
-  mirrorGallery("colPhoto");
+  const err = m => { $("#colErr").textContent = m || ""; $("#colErr").hidden = !m; };
 
+  // Stap 1: barcode scannen
+  const stepScan = () => {
+    code = null;
+    $("#colStep").innerHTML = `
+      <button class="btn block collect-big" type="button" id="scanBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V4h3M21 7V4h-3M3 17v3h3M21 17v3h-3M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>
+        Barcode scannen</button>
+      <div id="reader" hidden></div>
+      <p class="muted small" id="scanMsg" hidden></p>
+      <button class="linkish small" type="button" id="colTypeLink" style="justify-self:center">intypen</button>
+      <div class="type-code" id="colType" hidden>
+        <input class="input" id="colCode" inputmode="numeric" autocomplete="off" placeholder="Barcode" aria-label="Barcode">
+        <button class="btn ghost" type="button" id="colCodeBtn">OK</button>
+      </div>`;
+    $("#scanBtn").onclick = () => startScan(onCode);
+    $("#colTypeLink").onclick = () => { $("#colType").hidden = false; $("#colTypeLink").hidden = true; $("#colCode").focus(); };
+    const typed = () => {
+      const c = cleanBarcode($("#colCode").value);
+      if (!validBarcode(c)) return err("Deze barcode klopt niet.");
+      onCode(c);
+    };
+    $("#colCodeBtn").onclick = typed;
+    $("#colCode").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); typed(); } };
+  };
+
+  // Stap 2: foto maken; opslaan gebeurt zodra de foto er is
+  const stepPhoto = () => {
+    $("#colStep").innerHTML = `
+      <p class="collect-code">✓ <b>${esc(code)}</b></p>
+      <label class="btn block collect-big" style="cursor:pointer">
+        <input type="file" accept="image/*" capture="environment" id="colPhoto" hidden>
+        📷 Foto maken
+      </label>
+      <button class="linkish small" type="button" id="colRescan" style="justify-self:center">opnieuw scannen</button>`;
+    $("#colRescan").onclick = () => { stepScan(); startScan(onCode); };
+    $("#colPhoto").onchange = async e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      $("#colStep").innerHTML = `<p class="collect-code">Opslaan…</p>`;
+      try {
+        const photo_path = await uploadPhoto(file);
+        const { error } = await sb.from("scan_inbox").insert({ code, photo_path, note: null });
+        if (error) throw error;
+        if (navigator.vibrate) navigator.vibrate(40);
+        toast("Ingestuurd");
+        drawList();
+        stepScan();
+        startScan(onCode);   // meteen door naar het volgende flesje
+      } catch (ex) {
+        err("Opslaan lukte niet: " + (ex.message || ex));
+        stepPhoto();
+      }
+    };
+  };
+
+  const onCode = async c => {
+    await stopScanner();
+    err("");
+    code = c;
+    if (navigator.vibrate) navigator.vibrate(60);
+    stepPhoto();
+  };
 
   const drawList = async () => {
     try {
       const items = await fetchInbox(true);
-      $("#colCount").textContent = `${items.length} ${items.length === 1 ? "barcode" : "barcodes"}`;
+      $("#colCount").textContent = `(${items.length})`;
       $("#colList").innerHTML = items.length ? items.slice().reverse().map(it => `
         <div class="bc-row">
           ${it.photo_path ? `<div class="beer-photo"><img src="${esc(photoUrl(it.photo_path))}" alt="" loading="lazy"></div>` : `<div class="beer-photo">${glassSvg("var(--line)")}</div>`}
-          <span class="db-body"><b>${esc(it.code)}</b><span class="muted small">${esc(it.note || "Geen omschrijving")}</span></span>
-          <button class="btn ghost small" type="button" data-coldel="${it.id}">Verwijderen</button>
-        </div>`).join("") : `<p class="muted small">Nog leeg.</p>`;
+          <span class="db-body"><b>${esc(it.code)}</b><span class="muted small">${fmtDate(it.created_at)}</span></span>
+          <button class="btn ghost small" type="button" data-coldel="${it.id}" aria-label="Verwijderen">×</button>
+        </div>`).join("") : `<p class="muted small">Nog niets.</p>`;
       $("#colList").onclick = async e => {
         const d = e.target.closest("[data-coldel]");
         if (!d) return;
         const it = items.find(x => x.id === d.dataset.coldel);
-        if (!(await confirmDelete("Uit je verzamelbak verwijderen?", `<p><b>${esc(it.code)}</b>${it.note ? `<br>${esc(it.note)}` : ""}</p>`))) return;
+        if (!(await confirmDelete("Verwijderen?", `<p><b>${esc(it.code)}</b></p>`))) return;
         await deleteInboxItem(it, false);
         drawList();
       };
-    } catch (err) {
-      $("#colList").innerHTML = `<p class="error small">Laden lukte niet: ${esc(err.message)}</p>`;
-    }
-  };
-  drawList();
-
-  $("#collectForm").onsubmit = async e => {
-    e.preventDefault();
-    const err = $("#colErr"); err.hidden = true;
-    if (!code) { err.textContent = "Scan of typ eerst een barcode. Die is verplicht."; err.hidden = false; return; }
-    const btn = $("#colSave"); btn.disabled = true; btn.textContent = "Bewaren…";
-    try {
-      const photo_path = photoFile ? await uploadPhoto(photoFile) : null;
-      const note = clampChars(String(new FormData(e.target).get("note") || "").trim(), 300) || null;
-      const { error } = await sb.from("scan_inbox").insert({ code, photo_path, note });
-      if (error) throw error;
-      toast(`Barcode ${code} bewaard`);
-      if (navigator.vibrate) navigator.vibrate(40);
-      // Klaar voor de volgende
-      code = null; photoFile = null;
-      e.target.reset();
-      $("#colCodeBox").hidden = true;
-      $("#colPhotoPreview").hidden = true;
-      e.target.querySelector(".char-count").textContent = "0 / 300";
-      drawList();
-      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (ex) {
-      err.textContent = "Bewaren lukte niet: " + (ex.message || ex); err.hidden = false;
-    } finally {
-      btn.disabled = false; btn.textContent = "Bewaren en volgende";
+      $("#colList").innerHTML = `<p class="error small">${esc(ex.message)}</p>`;
     }
   };
+
+  stepScan();
+  drawList();
 }
 
 // Verwijderen uit de verzamelbak; de foto alleen opruimen als die niet bij een bier in gebruik is
@@ -7620,6 +7625,7 @@ const publicUser = params.get("u");
 
 async function route() {
   view().classList.remove("wide");
+  if (!keepCameraWarm()) releaseCamera();
   if (state.user) updateBadges();
   closeLightbox();
   if ($("#dlg").open) closeDialog();
