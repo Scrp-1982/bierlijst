@@ -466,7 +466,8 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .dup-cand input { accent-color: var(--hop); }
 .dup-choice .btn.on[data-choice="merge"] { box-shadow: 0 0 0 3px var(--gold); }
 .dup-choice .btn.on[data-choice="apart"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-.auth-tabs.small-tabs { grid-auto-flow: column; grid-auto-columns: 1fr; }
+.auth-tabs.small-tabs { grid-auto-flow: column; grid-auto-columns: 1fr; max-width: 560px; }
+@media (max-width: 560px) { .auth-tabs.small-tabs { grid-auto-columns: max-content; overflow-x: auto; scrollbar-width: none; } .auth-tabs.small-tabs::-webkit-scrollbar { display: none; } .auth-tabs.small-tabs > * { font-size: .88rem; padding-left: 12px; padding-right: 12px; white-space: nowrap; } }
 .stock-link b:empty { display: none; }
 .stock-link b { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; margin-left: 4px; border-radius: 11px; background: var(--hop); color: #fff; font-size: .8rem; }
 .collect { max-width: 520px; margin: 0 auto; width: 100%; }
@@ -480,6 +481,13 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .ai-row .ai-msg { flex: 1; min-width: 160px; }
 .input.ai-filled { background: #FFF8E1; border-color: #F0C24B; }
 @media (prefers-color-scheme: dark) { .input.ai-filled { background: #3A3218; } }
+.brew-names { display: flex; flex-wrap: wrap; gap: 6px; }
+.brew-name { padding: 4px 10px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-size: .9rem; }
+.brew-name b { color: var(--muted); font-weight: 700; margin-left: 2px; }
+.ai-verdict { font-weight: 700; }
+.ai-verdict.zelfde { color: var(--hop); }
+.ai-verdict.anders { color: var(--danger); }
+.ai-verdict.twijfel { color: #A66B00; }
 .db-head-actions { display: flex; gap: 8px; flex-wrap: nowrap; }
 @media (max-width: 560px) { .db-head-actions .btn { padding: 0 12px; min-height: 40px; font-size: .9rem; white-space: nowrap; } .db-head-actions .btn svg { margin-right: 4px; } }
 .db-head-actions .btn svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }
@@ -975,7 +983,7 @@ body.typing.has-tabbar { padding-bottom: 0; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-11-14.6";
+const APP_VERSION = "2026-11-14.8";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1154,6 +1162,13 @@ function hideDuplicateTitle() {
   const t = $("#pageTitle")?.textContent;
   const h = view().querySelector("h1");
   if (h) h.classList.toggle("dup-title", sameTitle(h.textContent, t));
+  // Smalle schermen: het actieve tabblad in beeld schuiven
+  const tab = view().querySelector('.small-tabs [aria-selected="true"]');
+  if (tab && !tab.dataset.shown) {
+    tab.dataset.shown = "1";
+    const bar = tab.parentElement;
+    bar.scrollLeft = tab.offsetLeft - (bar.clientWidth - tab.clientWidth) / 2;
+  }
 }
 new MutationObserver(hideDuplicateTitle).observe(document.getElementById("view"), { childList: true, subtree: true });
 new MutationObserver(hideDuplicateTitle).observe(document.getElementById("pageTitle"), { childList: true, characterData: true, subtree: true });
@@ -4719,6 +4734,7 @@ function reviewTabs(active, counts = {}) {
       <a role="tab" href="#controleren" aria-selected="${active === "changes"}">Wijzigingen${counts.changes ? ` (${counts.changes})` : ""}</a>
       <a role="tab" href="#controleren/verzamelbak" aria-selected="${active === "inbox"}">Verzamelbak${counts.inbox ? ` (${counts.inbox})` : ""}</a>
       <a role="tab" href="#controleren/dubbel" aria-selected="${active === "dups"}">Dubbel?</a>
+      <a role="tab" href="#controleren/brouwerijen" aria-selected="${active === "brew"}">Brouwerijen</a>
     </div>`;
 }
 async function reviewCounts() {
@@ -4937,6 +4953,7 @@ async function runDuplicateSearch() {
       </label>`;
   };
   out.innerHTML = `
+    <button class="btn soft small" type="button" id="dupAi" style="margin-bottom:8px">✨ Laat AI meekijken</button>
     <p class="muted small">${all.length} ${all.length === 1 ? "mogelijk dubbel paar" : "mogelijk dubbele paren"} gevonden${all.length > pairs.length ? `; de ${pairs.length} meest waarschijnlijke staan hieronder` : ""}. Het bier met het bolletje blijft; het andere gaat erin op.</p>
     <div class="dup-list">${pairs.map(p => p.orphan ? `
       <div class="panel dup-pair" data-pair="${p.i}">
@@ -4957,7 +4974,7 @@ async function runDuplicateSearch() {
         </div>
       </div>` : `
       <div class="panel dup-pair" data-pair="${p.i}">
-        <p class="small muted">${esc(p.why)}${p.score < 1 ? ` (${Math.round(p.score * 100)}% gelijk)` : ""}</p>
+        <p class="small muted">${esc(p.why)}${p.score < 1 ? ` (${Math.round(p.score * 100)}% gelijk)` : ""} <span class="ai-verdict" data-aiv="${p.i}"></span></p>
         <div class="dup-sides">${side(p, "a")}${side(p, "b")}</div>
         <div class="dup-choice" role="group" aria-label="Wat moet er gebeuren?">
           <button type="button" class="btn small" data-choice="merge">Samenvoegen</button>
@@ -4970,6 +4987,31 @@ async function runDuplicateSearch() {
       <button class="btn" type="button" id="dupGo" disabled>Verwerken</button>
     </div>`;
 
+  // AI beoordeelt de gewone paren en zet zijn advies klaar
+  $("#dupAi").onclick = async () => {
+    const btn = $("#dupAi"); btn.disabled = true;
+    const plain = pairs.filter(p => !p.orphan);
+    const pick = b => ({ name: b.name, brewery: b.brewery, style: b.style, abv: b.abv });
+    for (let i = 0; i < plain.length; i += 40) {
+      btn.textContent = `✨ AI kijkt mee… ${Math.min(i + 40, plain.length)} van ${plain.length}`;
+      const part = plain.slice(i, i + 40);
+      const { data, error } = await sb.functions.invoke("ai-tools", { body: { action: "pairs", pairs: part.map(p => ({ id: String(p.i), a: pick(p.a), b: pick(p.b) })) } });
+      if (error || data?.error) { toast("AI lukte niet: " + (data?.error || error.message)); break; }
+      for (const v of data.pairs || []) {
+        const p = pairs[+v.id], el = document.querySelector(`[data-aiv="${v.id}"]`);
+        if (!p || !el) continue;
+        p.ai = v.verdict;
+        el.className = `ai-verdict ${v.verdict}`;
+        el.textContent = (v.verdict === "zelfde" ? "AI: zelfde bier" : v.verdict === "anders" ? "AI: ander bier" : "AI: twijfel") + (v.reason ? ` (${v.reason})` : "");
+        const box = document.querySelector(`[data-pair="${v.id}"]`);
+        if (box && !p.choice) {   // advies alvast invullen, jij kunt het nog omzetten
+          const want = v.verdict === "zelfde" ? "merge" : v.verdict === "anders" ? "apart" : "";
+          if (want) box.querySelector(`[data-choice="${want}"]`)?.click();
+        }
+      }
+    }
+    btn.textContent = "✨ AI-advies ingevuld; controleer het en klik op Verwerken";
+  };
   const sum = () => {
     const m = pairs.filter(p => p.choice === "merge").length, a = pairs.filter(p => p.choice === "apart").length, d = pairs.filter(p => p.choice === "delete").length;
     $("#dupSum").textContent = m || a || d ? [m && `${m} samenvoegen`, a && `${a} apart houden`, d && `${d} verwijderen`].filter(Boolean).join(", ") : "Nog niets gekozen";
@@ -5035,6 +5077,132 @@ async function runDuplicateSearch() {
     toast(`${done} samengevoegd, ${dels.length} verwijderd, ${aparts.length} apart gehouden${failed.length ? `, ${failed.length} lukte niet` : ""}`);
     if (failed.length) alert("Niet gelukt:\n\n" + failed.join("\n"));
     runDuplicateSearch();
+  };
+}
+
+// ---------------------------------------------------------------------
+// Controleren, tabblad Brouwerijen: schrijfwijzen gelijktrekken met AI
+// ---------------------------------------------------------------------
+const BREW_GENERIC = new Set("bierbrouwerij brouwerij brouwerijen brasserie brasseries brewery breweries brewing brewers brewhouse brewpub brauerei privatbrauerei brauhaus bryggeri birrificio cerveceria cervejaria company co inc ltd llc gmbh ag bv nv sa kg the de het and en of la le les du des di der van von il el los las y den das zum zur au aux st sint saint beer bier craft ales ale works restaurant grill pub house abbaye abdij abbey abtei abbazia trappist trappiste".split(" "));
+const brewToks = s => foldTxt(s).replace(/[^a-z0-9]+/g, " ").split(" ").filter(t => t.length >= 4 && !BREW_GENERIC.has(t));
+
+// Groepjes namen die een kenmerkend woord delen; zeer algemene woorden tellen niet mee
+function breweryCandidateGroups(names) {
+  const byTok = new Map();
+  for (const n of names) for (const t of new Set(brewToks(n))) { if (!byTok.has(t)) byTok.set(t, []); byTok.get(t).push(n); }
+  const parent = new Map(names.map(n => [n, n]));
+  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  for (const [t, list] of byTok) {
+    if (list.length < 2 || list.length > 12) continue;   // te algemeen (zoals "river" of "mountain")
+    for (const n of list.slice(1)) parent.set(find(n), find(list[0]));
+  }
+  const comp = new Map();
+  for (const n of names) { const r = find(n); if (!comp.has(r)) comp.set(r, []); comp.get(r).push(n); }
+  return [...comp.values()].filter(g => g.length >= 2 && g.length <= 25);
+}
+
+async function renderBreweries() {
+  setTab("controleren");
+  if (!state.me?.is_admin) { view().innerHTML = `<p class="error">Deze pagina is alleen voor beheerders.</p>`; return; }
+  const counts = await reviewCounts();
+  view().innerHTML = `
+    <div class="stack">
+      <div class="stack">
+        <h1>Controleren</h1>
+        ${reviewTabs("brew", counts)}
+        <p class="muted small">De AI zoekt verschillende schrijfwijzen van dezelfde brouwerij.</p>
+      </div>
+      <button class="btn" type="button" id="brewFind">✨ Brouwerijnamen controleren met AI</button>
+      <div id="brewOut"></div>
+    </div>`;
+  $("#brewFind").onclick = runBreweryCheck;
+}
+
+async function runBreweryCheck() {
+  const out = $("#brewOut"), btn = $("#brewFind");
+  btn.disabled = true;
+  out.innerHTML = `<p class="muted">Alle brouwerijnamen ophalen…</p>`;
+  let beers, rej;
+  try { [beers, { data: rej }] = await Promise.all([fetchAllBeers(), sb.from("brewery_rejected").select("key")]); }
+  catch (e) { out.innerHTML = `<p class="error">${esc(e.message)}</p>`; btn.disabled = false; return; }
+  const rejected = new Set((rej || []).map(r => r.key));
+  const cnt = new Map();
+  for (const b of beers) if (b.brewery) cnt.set(b.brewery, (cnt.get(b.brewery) || 0) + 1);
+  const cands = breweryCandidateGroups([...cnt.keys()]);
+  // In porties van ongeveer 120 namen naar de AI
+  const batches = []; let cur = [], size = 0;
+  for (const g of cands) { if (size + g.length > 120 && cur.length) { batches.push(cur); cur = []; size = 0; } cur.push(g); size += g.length; }
+  if (cur.length) batches.push(cur);
+  const groups = [];
+  for (let i = 0; i < batches.length; i++) {
+    out.innerHTML = `<p class="muted">${cnt.size} brouwerijnamen, ${cands.length} groepjes om te bekijken. AI aan het werk: deel ${i + 1} van ${batches.length}…</p><span class="bar"><span style="width:${Math.round(i / batches.length * 100)}%"></span></span>`;
+    const { data, error } = await sb.functions.invoke("ai-tools", { body: { action: "breweries", groups: batches[i] } });
+    if (error || data?.error) { out.insertAdjacentHTML("beforeend", `<p class="error small">Deel ${i + 1} lukte niet: ${esc(data?.error || error.message)}</p>`); continue; }
+    groups.push(...(data.groups || []));
+  }
+  btn.disabled = false; btn.textContent = "✨ Opnieuw controleren";
+  const key = names => [...names].sort().join("|");
+  const todo = groups
+    .filter(g => !rejected.has(key(g.names)))
+    .filter(g => !(g.names.length && g.names.every(n => n === g.canonical)))
+    .map((g, i) => ({ ...g, i, choice: "" }))
+    .sort((a, b) => b.names.reduce((n, x) => n + (cnt.get(x) || 0), 0) - a.names.reduce((n, x) => n + (cnt.get(x) || 0), 0));
+  if (!todo.length) { out.innerHTML = `<div class="panel empty"><h2>Alle brouwerijnamen zijn in orde</h2><p class="muted">Proost!</p></div>`; return; }
+
+  out.innerHTML = `
+    <p class="muted small">${todo.length} ${todo.length === 1 ? "groep" : "groepen"} gevonden. Het getal achter een naam is het aantal bieren met die schrijfwijze.</p>
+    <div class="dup-list">${todo.map(g => `
+      <div class="panel dup-pair" data-bg="${g.i}">
+        <div class="brew-names">${g.names.map(n => `<span class="brew-name">${esc(n)} <b>${cnt.get(n) || 0}</b></span>`).join("")}</div>
+        <label class="field"><span>Wordt</span><input class="input" data-bcanon="${g.i}" value="${esc(g.canonical)}"></label>
+        ${g.reason ? `<p class="muted small" style="margin:0">${esc(g.reason)}</p>` : ""}
+        <div class="dup-choice">
+          <button type="button" class="btn small" data-bchoice="merge">Samenvoegen</button>
+          <button type="button" class="btn ghost small" data-bchoice="apart">Niet samenvoegen</button>
+        </div>
+      </div>`).join("")}</div>
+    <div class="process-bar dup-bar">
+      <span class="muted small" id="brewSum">Nog niets gekozen</span>
+      <button class="btn" type="button" id="brewGo" disabled>Verwerken</button>
+    </div>`;
+  const byI = new Map(todo.map(g => [g.i, g]));
+  const sum = () => {
+    const m = todo.filter(g => g.choice === "merge").length, a = todo.filter(g => g.choice === "apart").length;
+    $("#brewSum").textContent = m || a ? [m && `${m} samenvoegen`, a && `${a} niet`].filter(Boolean).join(", ") : "Nog niets gekozen";
+    $("#brewGo").disabled = !(m || a);
+  };
+  out.onclick = e => {
+    const c = e.target.closest("[data-bchoice]");
+    if (!c) return;
+    const box = c.closest("[data-bg]"), g = byI.get(+box.dataset.bg);
+    g.choice = g.choice === c.dataset.bchoice ? "" : c.dataset.bchoice;
+    box.classList.toggle("choice-merge", g.choice === "merge");
+    box.classList.toggle("choice-apart", g.choice === "apart");
+    box.querySelectorAll("[data-bchoice]").forEach(x => x.classList.toggle("on", x.dataset.bchoice === g.choice));
+    sum();
+  };
+  out.oninput = e => { const inp = e.target.closest("[data-bcanon]"); if (inp) byI.get(+inp.dataset.bcanon).canonical = inp.value.trim(); };
+  $("#brewGo").onclick = async () => {
+    const merges = todo.filter(g => g.choice === "merge" && g.canonical), aparts = todo.filter(g => g.choice === "apart");
+    const beersMoved = merges.reduce((n, g) => n + g.names.filter(x => x !== g.canonical).reduce((k, x) => k + (cnt.get(x) || 0), 0), 0);
+    if (!(await confirmDelete("Verwerken?",
+      `<p>${merges.length ? `<b>${merges.length}</b> ${merges.length === 1 ? "groep wordt" : "groepen worden"} samengevoegd; ${beersMoved} ${beersMoved === 1 ? "bier krijgt" : "bieren krijgen"} een andere brouwerijnaam.` : ""}
+       ${aparts.length ? `<br><b>${aparts.length}</b> ${aparts.length === 1 ? "groep blijft" : "groepen blijven"} zoals ${aparts.length === 1 ? "hij is" : "ze zijn"} en ${aparts.length === 1 ? "komt" : "komen"} niet meer terug.` : ""}</p>`,
+      "Ja, verwerken"))) return;
+    $("#brewGo").disabled = true;
+    let renamed = 0; const failed = [];
+    for (const g of merges) {
+      const { data, error } = await sb.rpc("admin_rename_brewery", { old_names: g.names, new_name: g.canonical });
+      if (error) failed.push(`${g.canonical}: ${error.message}`); else renamed += data || 0;
+    }
+    if (aparts.length) {
+      const { error } = await sb.from("brewery_rejected").upsert(aparts.map(g => ({ key: key(g.names), names: g.names })), { onConflict: "key", ignoreDuplicates: true });
+      if (error) failed.push("Onthouden lukte niet: " + error.message);
+    }
+    _suggest.at = 0;   // suggesties bij het typen verversen
+    toast(`${renamed} ${renamed === 1 ? "bier" : "bieren"} bijgewerkt${failed.length ? `, ${failed.length} lukte niet` : ""}`);
+    if (failed.length) alert("Niet gelukt:\n\n" + failed.join("\n"));
+    out.innerHTML = `<div class="panel"><p><b>Klaar.</b> ${renamed} ${renamed === 1 ? "bier heeft" : "bieren hebben"} nu de juiste brouwerijnaam.</p><p class="muted small">Klik nog eens op de knop hierboven om te zien of er meer is.</p></div>`;
   };
 }
 
@@ -7711,6 +7879,7 @@ async function route() {
   if (h === "verzamel") return renderCollect();
   if (h === "verwerken" || h === "controleren/verzamelbak") return renderProcess();
   if (h === "controleren/dubbel") return renderDuplicates();
+  if (h === "controleren/brouwerijen") return renderBreweries();
   if (h === "untappd") return renderUntappdImport();
   if (h === "controleren") return renderReview();
   if (h === "barcodes") return renderBarcodes();
