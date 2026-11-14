@@ -476,6 +476,10 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .collect-code { text-align: center; font-size: 1.15rem; margin: 0; }
 .collect-step .linkish { align-self: center; margin: 0 auto; color: var(--muted); }
 .collect-sent > summary { cursor: pointer; }
+.ai-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ai-row .ai-msg { flex: 1; min-width: 160px; }
+.input.ai-filled { background: #FFF8E1; border-color: #F0C24B; }
+@media (prefers-color-scheme: dark) { .input.ai-filled { background: #3A3218; } }
 .db-head-actions { display: flex; gap: 8px; flex-wrap: nowrap; }
 @media (max-width: 560px) { .db-head-actions .btn { padding: 0 12px; min-height: 40px; font-size: .9rem; white-space: nowrap; } .db-head-actions .btn svg { margin-right: 4px; } }
 .db-head-actions .btn svg { width: 18px; height: 18px; margin-right: 6px; vertical-align: -3px; }
@@ -971,7 +975,7 @@ body.typing.has-tabbar { padding-bottom: 0; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-11-14.5";
+const APP_VERSION = "2026-11-14.6";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -1925,6 +1929,10 @@ function editCheckin(c, beer) {
 
 function beerFields(b = {}, opts = {}) {
   return `
+    <div class="ai-row">
+      <button type="button" class="btn soft small" data-ai ${opts.aiImg ? `data-ai-img="${esc(opts.aiImg)}"` : ""} ${opts.aiCode ? `data-ai-code="${esc(opts.aiCode)}"` : ""}>✨ Herkennen met AI</button>
+      <span class="muted small ai-msg"></span>
+    </div>
     <label class="field"><span>Naam van het bier</span><input class="input" name="name" required value="${esc(b.name)}"></label>
     ${opts.barcode ? `
     <label class="field"><span>Barcode</span><input class="input" name="barcode" inputmode="numeric" autocomplete="off" placeholder="De cijfers onder de streepjes" value="${esc(b.barcode)}"></label>
@@ -1945,6 +1953,57 @@ function beerFields(b = {}, opts = {}) {
     </datalist>
     ${(setTimeout(fillSuggestionLists), "")}`;
 }
+
+// ---------------------------------------------------------------------
+// Bier herkennen met AI (Gemini): vult alleen lege velden in
+// ---------------------------------------------------------------------
+const blobToBase64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+async function aiImageFor(btn) {
+  const form = btn.closest("form") || view();
+  const pick = root => [...root.querySelectorAll('input[type="file"]')].map(i => i.files?.[0]).find(Boolean);
+  const file = pick(form) || pick(view());
+  if (file) return compressImage(file);
+  if (btn.dataset.aiImg) { const r = await fetch(btn.dataset.aiImg); if (r.ok) return r.blob(); }
+  return null;
+}
+document.addEventListener("click", async e => {
+  const btn = e.target.closest("[data-ai]");
+  if (!btn) return;
+  e.preventDefault();
+  const form = btn.closest("form") || view();
+  const msg = btn.parentElement.querySelector(".ai-msg");
+  const say = t => { if (msg) msg.textContent = t; };
+  const code = cleanBarcode(form.querySelector('[name="barcode"]')?.value || "") || btn.dataset.aiCode || "";
+  btn.disabled = true;
+  say("Even kijken…");
+  try {
+    const img = await aiImageFor(btn);
+    if (!img && !code) { say("Maak eerst een foto van het etiket."); return; }
+    const sug = await loadSuggestions().catch(() => ({ styles: [] }));
+    const styles = [...new Set(["Pilsener", "Lager / Helles", "Blond", "Witbier/Weizen", "Tripel", "Dubbel", "Quadrupel", "IPA", "Double IPA", "NEIPA", "Pale Ale", "Saison", "Amber", "Bock", "Stout", "Imperial Stout", "Porter", "Kriek", "Geuze", "Sour", "Alcoholvrij", "Strong Ale", "Barleywine", ...(sug.styles || [])])];
+    const { data, error } = await sb.functions.invoke("label-ai", { body: { image: img ? await blobToBase64(img) : null, mime: "image/jpeg", barcode: code || null, styles } });
+    if (error || data?.error) throw new Error(data?.error || error.message);
+    let n = 0;
+    const fill = (name, val) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (!el || val == null || val === "" || String(el.value).trim()) return;
+      el.value = val; el.dispatchEvent(new Event("input", { bubbles: true })); n++;
+      el.classList.add("ai-filled");
+    };
+    fill("name", data.name);
+    fill("brewery", data.brewery);
+    fill("style", data.style);
+    fill("abv", data.abv);
+    fill("country", typeof normCountry === "function" ? (normCountry(data.country)?.name || data.country) : data.country);
+    fill("description", data.description);
+    const zeker = data.confidence === "laag" ? " De AI was niet zeker; controleer het goed." : " Controleer het even.";
+    say(n ? `${n} ${n === 1 ? "veld" : "velden"} ingevuld door AI.${zeker}` : `Niets aangevuld: ${data.name ? `de AI denkt aan “${data.name}”, maar alle velden waren al ingevuld.` : "de AI herkende het bier niet."}`);
+  } catch (ex) {
+    say("Herkennen lukte niet: " + (ex.message || ex));
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 // Suggesties tijdens het typen: brouwerijen en stijlen die al in de database staan
 let _suggest = { at: 0, data: null, loading: null };
@@ -4181,7 +4240,7 @@ async function renderBeerForm(id) {
 
       <div class="panel stack">
         <h2>Gegevens</h2>
-        <fieldset class="plain" ${full ? "" : "disabled"}>${beerFields(beer)}</fieldset>
+        <fieldset class="plain" ${full ? "" : "disabled"}>${beerFields(beer, { aiCode: beer.barcode || "", aiImg: beer.image_path ? photoUrl(beer.image_path) : "" })}</fieldset>
       </div>
 
       <div class="panel stack">
@@ -5802,7 +5861,7 @@ async function renderProcess() {
         ${full ? `<p class="muted small">Vul aan of verbeter wat je wilt; bij Samenvoegen wordt alles in één keer opgeslagen${state.me?.is_admin ? "" : " en daarna door de beheerder gecontroleerd"}.</p>`
           : `<p class="notice small">Bij dit bier kun je de barcode en een ontbrekende foto toevoegen. Andere gegevens kan een databasebeheerder aanpassen.</p>`}
         <form id="pEditForm" novalidate><fieldset class="plain" ${full ? "" : "disabled"}>
-          ${beerFields({ ...chosen, description: chosen.description || current.note || "" })}
+          ${beerFields({ ...chosen, description: chosen.description || current.note || "" }, { aiImg: current.photo_path ? photoUrl(current.photo_path) : "", aiCode: current.code })}
         </fieldset></form>
         ${inboxPhotoChoice(current, chosen, full)}
       </div>`;
@@ -5949,7 +6008,7 @@ async function renderProcess() {
       <form class="stack new-beer-form" id="pNewForm" novalidate>
         <h2>Nieuw bier</h2>
         <p class="muted small">Barcode ${esc(current.code)}.</p>
-        ${beerFields(pre)}
+        ${beerFields(pre, { aiImg: current.photo_path ? photoUrl(current.photo_path) : "", aiCode: current.code })}
         ${inboxPhotoChoice(current, null, true)}
         <p class="error" id="pNewErr" hidden></p>
         <div class="new-beer-actions">
