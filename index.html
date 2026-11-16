@@ -481,6 +481,11 @@ body.has-tabbar .merge-bar { bottom: calc(66px + env(safe-area-inset-bottom, 0px
 .ai-row .ai-msg { flex: 1; min-width: 160px; }
 .input.ai-filled { background: #FFF8E1; border-color: #F0C24B; }
 @media (prefers-color-scheme: dark) { .input.ai-filled { background: #3A3218; } }
+.review-beer { display: flex; gap: 12px; align-items: center; }
+.review-beer h3 { margin: 0; }
+.review-photo { width: 72px; height: 72px; flex: none; padding: 0; border: 0; cursor: zoom-in; }
+.rv-photo { display: grid; gap: 6px; justify-items: start; }
+.rv-photo img { max-width: 100%; max-height: 260px; border-radius: var(--radius); object-fit: contain; transition: opacity .15s; }
 .brew-names { display: flex; flex-wrap: wrap; gap: 6px; }
 .brew-name { padding: 4px 10px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); font-size: .9rem; }
 .brew-name b { color: var(--muted); font-weight: 700; margin-left: 2px; }
@@ -983,7 +988,7 @@ body.typing.has-tabbar { padding-bottom: 0; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-11-14.8";
+const APP_VERSION = "2026-11-14.9";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -5271,64 +5276,152 @@ async function renderReview() {
   if (error) { view().innerHTML = `<p class="error">Laden lukte niet: ${esc(error.message)}</p>`; return; }
   let items = data || [];
 
-  const card = c => {
-    const keys = Object.keys(c.new_values || {});
+  // Alle openstaande wijzigingen per bier bij elkaar (nieuw bier + foto = één kaart)
+  const groupsOf = () => {
+    const m = new Map();
+    for (const c of items) { if (!m.has(c.beer_id)) m.set(c.beer_id, []); m.get(c.beer_id).push(c); }
+    return [...m.values()];
+  };
+  const card = list => {
+    const c0 = list[0], isNew = list.some(c => c.kind === "nieuw"), beer = c0.beer || {};
+    const who = [...new Set(list.map(c => c.user?.display_name || "Iemand"))].join(", ");
     return `
-      <article class="review-card" data-change="${c.id}">
+      <article class="review-card" data-group="${c0.beer_id}">
         <div class="review-head">
-          <span class="tag ${c.kind === "nieuw" ? "on" : "warn"}">${c.kind === "nieuw" ? "Nieuw bier" : "Wijziging"}</span>
-          <span class="muted small">${esc(c.user?.display_name || "Iemand")}, ${relTime(c.created_at)}</span>
+          <span class="tag ${isNew ? "on" : "warn"}">${isNew ? "Nieuw bier" : "Wijziging"}</span>
+          <span class="muted small">${esc(who)}, ${relTime(c0.created_at)}</span>
         </div>
-        <h3><a href="#database/bewerk/${c.beer_id}">${esc(c.beer?.name || "Bier")}</a>${c.beer?.brewery ? ` <span class="muted small">${esc(c.beer.brewery)}</span>` : ""}</h3>
-        <div class="table-scroll"><table class="preview diff">
-          <thead><tr><th>Veld</th>${c.kind === "nieuw" ? "" : "<th>Was</th>"}<th>${c.kind === "nieuw" ? "Waarde" : "Wordt"}</th></tr></thead>
-          <tbody>${keys.map(k => `<tr><td>${FIELD_NL[k] || esc(k)}</td>${c.kind === "nieuw" ? "" : `<td>${fieldValue(k, c.old_values?.[k])}</td>`}<td>${fieldValue(k, c.new_values[k])}</td></tr>`).join("")}</tbody>
-        </table></div>
+        <div class="review-beer">
+          ${beer.image_path ? `<button type="button" class="beer-photo review-photo" data-zoom="${esc(photoUrl(beer.image_path))}"><img src="${esc(photoUrl(beer.image_path))}" alt="" loading="lazy"></button>` : ""}
+          <h3>${esc(beer.name || "Bier")}${beer.brewery ? ` <span class="muted small">${esc(beer.brewery)}</span>` : ""}</h3>
+        </div>
+        ${list.map(c => {
+          const keys = Object.keys(c.new_values || {}).filter(k => k !== "image_path");   // de foto staat al bovenaan
+          if (!keys.length) return c.new_values?.image_path ? `<p class="muted small" style="margin:0">Nieuwe foto toegevoegd.</p>` : "";
+          return `<div class="table-scroll"><table class="preview diff">
+            <thead><tr><th>Veld</th>${c.kind === "nieuw" ? "" : "<th>Was</th>"}<th>${c.kind === "nieuw" ? "Waarde" : "Wordt"}</th></tr></thead>
+            <tbody>${keys.map(k => `<tr><td>${FIELD_NL[k] || esc(k)}</td>${c.kind === "nieuw" ? "" : `<td>${fieldValue(k, c.old_values?.[k])}</td>`}<td>${fieldValue(k, c.new_values[k])}</td></tr>`).join("")}</tbody>
+          </table></div>`;
+        }).join("")}
         <div class="review-actions">
-          <button class="btn small" type="button" data-approve="${c.id}">Goedkeuren</button>
-          ${c.kind === "nieuw" ? `<button class="btn soft small" type="button" data-mergenew="${c.beer_id}" data-name="${esc(c.beer?.name || "")}" data-brewery="${esc(c.beer?.brewery || "")}">Samenvoegen met bestaand bier</button>` : ""}
-          <a class="btn ghost small" href="#database/bewerk/${c.beer_id}">Bewerken</a>
-          <button class="btn danger small" type="button" data-reject="${c.id}" data-kind="${c.kind}" data-name="${esc(c.beer?.name || "")}">Afwijzen</button>
+          <button class="btn small" type="button" data-rvopen="${c0.beer_id}">${isNew ? "Bekijken en toevoegen" : "Bekijken en goedkeuren"}</button>
+          ${isNew ? `<button class="btn soft small" type="button" data-mergenew="${c0.beer_id}" data-name="${esc(beer.name || "")}" data-brewery="${esc(beer.brewery || "")}">Samenvoegen met bestaand bier</button>` : ""}
+          <button class="btn danger small" type="button" data-rvreject="${c0.beer_id}">Afwijzen</button>
         </div>
       </article>`;
   };
   const counts = await reviewCounts();
   const draw = () => {
+    const groups = groupsOf();
     view().innerHTML = `
       <div class="stack">
         <div class="stack">
           <h1>Controleren</h1>
-          ${reviewTabs("changes", { ...counts, changes: items.length })}
-          <p class="muted">${items.length ? `${items.length} ${items.length === 1 ? "wijziging wacht" : "wijzigingen wachten"} op goedkeuring, oudste bovenaan.` : "Alle wijzigingen zijn gecontroleerd. Proost!"}</p>
+          ${reviewTabs("changes", { ...counts, changes: groups.length })}
+          ${groups.length ? "" : `<p class="muted">Alles is gecontroleerd. Proost!</p>`}
         </div>
-        <div class="stack">${items.map(card).join("")}</div>
+        <div class="stack">${groups.map(card).join("")}</div>
       </div>`;
   };
   draw();
 
+  const approveAll = async beerId => {
+    for (const c of items.filter(x => x.beer_id === beerId)) {
+      const { error } = await sb.rpc("admin_review_change", { change_id: c.id, approve: true });
+      if (error && !/al afgehandeld/.test(error.message)) throw error;
+    }
+    items = items.filter(x => x.beer_id !== beerId);
+  };
+
+  // Venster: gegevens aanpassen, foto houden of weghalen, en in één keer toevoegen
+  const openEditor = async beerId => {
+    const { data: beer, error } = await sb.from("beers").select("*").eq("id", beerId).maybeSingle();
+    if (error || !beer) return toast("Dit bier bestaat niet meer.");
+    const isNew = items.some(c => c.beer_id === beerId && c.kind === "nieuw");
+    openDialog(`
+      <form class="stack" id="rvForm" novalidate>
+        <h2>${isNew ? "Nieuw bier toevoegen" : "Wijziging goedkeuren"}</h2>
+        ${beer.image_path ? `
+          <div class="rv-photo">
+            <img src="${esc(photoUrl(beer.image_path))}" alt="">
+            <label class="check"><input type="checkbox" id="rvKeepPhoto" checked> Foto gebruiken</label>
+          </div>` : ""}
+        ${beerFields(beer, { aiCode: beer.barcode || "", aiImg: beer.image_path ? photoUrl(beer.image_path) : "" })}
+        <p class="error" id="rvErr" hidden></p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" type="submit">${isNew ? "Opslaan en toevoegen" : "Opslaan en goedkeuren"}</button>
+          <button class="btn ghost" type="button" id="rvCancel">Annuleren</button>
+        </div>
+      </form>`);
+    $("#rvCancel").onclick = closeDialog;
+    const keep = $("#rvKeepPhoto");
+    if (keep) keep.onchange = () => { $(".rv-photo img").style.opacity = keep.checked ? 1 : .3; };
+    $("#rvForm").onsubmit = async e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      const name = String(f.get("name") || "").trim();
+      if (!name) { $("#rvErr").textContent = "Geef het bier een naam."; $("#rvErr").hidden = false; return; }
+      const abvRaw = String(f.get("abv") || "").replace(",", ".").trim();
+      const patch = {
+        name,
+        brewery: String(f.get("brewery") || "").trim() || null,
+        style: String(f.get("style") || "").trim() || null,
+        abv: abvRaw === "" ? null : Number(abvRaw),
+        country: String(f.get("country") || "").trim() || null,
+        description: String(f.get("description") || "").trim() || null,
+      };
+      if (keep && !keep.checked) patch.image_path = null;   // de foto van de check-in zelf blijft gewoon staan
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        const { error: upErr } = await sb.from("beers").update(patch).eq("id", beerId);
+        if (upErr) throw upErr;
+        await approveAll(beerId);
+        closeDialog();
+        toast(isNew ? `“${name}” is toegevoegd aan de database` : "Goedgekeurd");
+        draw();
+        updateReviewCount();
+      } catch (ex) {
+        $("#rvErr").textContent = "Dat lukte niet: " + (ex.message || ex);
+        $("#rvErr").hidden = false;
+        btn.disabled = false;
+      }
+    };
+  };
+
   view().onclick = async e => {
+    const zoom = e.target.closest("[data-zoom]");
+    if (zoom) return openLightbox(zoom.dataset.zoom);
+    const op = e.target.closest("[data-rvopen]");
+    if (op) return openEditor(op.dataset.rvopen);
     const mg = e.target.closest("[data-mergenew]");
     if (mg) {
       const merged = await mergeNewBeer(mg.dataset.mergenew, mg.dataset.name, mg.dataset.brewery);
       if (merged) { items = items.filter(x => x.beer_id !== mg.dataset.mergenew); draw(); updateReviewCount(); }
       return;
     }
-    const ap = e.target.closest("[data-approve]"), rj = e.target.closest("[data-reject]");
-    if (!ap && !rj) return;
-    const id = (ap || rj).dataset.approve || (ap || rj).dataset.reject;
-    if (rj) {
-      const msg = rj.dataset.kind === "nieuw"
-        ? `Nieuw bier “${rj.dataset.name}” afwijzen? Het bier wordt uit de database verwijderd.`
-        : `Deze wijziging van “${rj.dataset.name}” afwijzen? De oude gegevens worden teruggezet.`;
-      if (!confirm(msg)) return;
+    const rj = e.target.closest("[data-rvreject]");
+    if (!rj) return;
+    const beerId = rj.dataset.rvreject, list = items.filter(x => x.beer_id === beerId);
+    const isNew = list.some(c => c.kind === "nieuw"), name = list[0]?.beer?.name || "dit bier";
+    if (!(await confirmDelete(isNew ? "Nieuw bier afwijzen?" : "Wijziging afwijzen?",
+      isNew ? `<p><b>${esc(name)}</b> wordt uit de database verwijderd.</p>` : `<p>De oude gegevens van <b>${esc(name)}</b> worden teruggezet.</p>`,
+      "Ja, afwijzen"))) return;
+    rj.disabled = true;
+    try {
+      // Eerst de wijzigingen terugdraaien, het nieuwe bier als laatste
+      for (const c of [...list].sort((a, b) => (a.kind === "nieuw") - (b.kind === "nieuw"))) {
+        const { error } = await sb.rpc("admin_review_change", { change_id: c.id, approve: false });
+        if (error) throw error;
+      }
+      items = items.filter(x => x.beer_id !== beerId);
+      toast(isNew ? "Bier verwijderd" : "Wijziging teruggedraaid");
+      draw();
+      updateReviewCount();
+    } catch (ex) {
+      rj.disabled = false;
+      alert(ex.message || ex);
     }
-    (ap || rj).disabled = true;
-    const { data: res, error } = await sb.rpc("admin_review_change", { change_id: id, approve: !!ap });
-    if (error) { (ap || rj).disabled = false; return toast(error.message); }
-    toast(res === "goedgekeurd" ? "Goedgekeurd" : res === "verwijderd" ? "Bier verwijderd" : "Wijziging teruggedraaid");
-    items = res === "verwijderd" ? items.filter(x => x.beer_id !== items.find(y => y.id === id)?.beer_id) : items.filter(x => x.id !== id);
-    draw();
-    updateReviewCount();
   };
 }
 
