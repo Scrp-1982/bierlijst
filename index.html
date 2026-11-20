@@ -988,7 +988,7 @@ body.typing.has-tabbar { padding-bottom: 0; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-11-20.1";
+const APP_VERSION = "2026-11-20.2";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -4867,6 +4867,32 @@ function findDuplicatePairs(beers, notDup) {
       if (Math.min(w1.length, w2.length) < 4 || w1.slice(0, 2) !== w2.slice(0, 2)) continue;   // Natte en Zatte zijn echt anders
       const r = levRatio(w1, w2);
       if (r >= 0.8) add(x.b, y.b, 0.8 + r / 10, `Bijna dezelfde spelling (“${w1}” en “${w2}”)`);
+    }
+  }
+  // Over brouwerijen heen: staat de brouwerij van het ene bier in de naam van het andere?
+  // (Leffe Blond van "Leffe" en Leffe Blonde van "AB InBev")
+  const nameToks = b => dupName(b.name).split(" ").filter(t => t && !DUP_EXTRA.has(t));
+  const byTok = new Map();
+  for (const x of items) for (const t of new Set(nameToks(x.b))) { if (!byTok.has(t)) byTok.set(t, []); byTok.get(t).push(x); }
+  const sameOrVariant = (A, B) => {
+    if (A.length !== B.length) return 0;
+    const ra = A.filter(t => !B.includes(t)), rb = B.filter(t => !A.includes(t));
+    if (!ra.length) return 0.95;
+    if (ra.length === 1 && rb.length === 1 && Math.min(ra[0].length, rb[0].length) >= 4 && ra[0].slice(0, 2) === rb[0].slice(0, 2) && levRatio(ra[0], rb[0]) >= 0.8) return 0.85;
+    return 0;
+  };
+  for (const y of items) {
+    const brand = y.bk ? y.bk.split(" ").filter(t => t.length >= 3) : [];
+    if (!brand.length) continue;
+    for (const x of byTok.get(brand[0]) || []) {
+      if (x === y || x.bk === y.bk) continue;
+      const A = [...new Set(nameToks(x.b))];
+      if (!brand.every(t => A.includes(t))) continue;
+      const B = [...new Set([...brand, ...nameToks(y.b)])];
+      if (digitsOf(A.join(" ")) !== digitsOf(B.join(" "))) continue;           // jaartallen, 0.0 enzovoort
+      if (ZERO_RE.test(x.b.name || "") !== ZERO_RE.test(y.b.name || "")) continue;
+      const sc = sameOrVariant(A.sort(), B.sort());
+      if (sc) add(x.b, y.b, sc, sc > 0.9 ? `Zelfde naam; brouwerij “${x.b.brewery || "?"}” tegenover “${y.b.brewery}”` : `Bijna dezelfde naam; brouwerij “${x.b.brewery || "?"}” tegenover “${y.b.brewery}”`);
     }
   }
   // Bier zonder brouwerij met dezelfde naam als een bier met brouwerij
