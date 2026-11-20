@@ -988,7 +988,7 @@ body.typing.has-tabbar { padding-bottom: 0; }
 const SUPABASE_URL = "https://pudgqufehuzfxqjbceys.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qZjWLWwVW_vyTIwFtawzCg_ohgpKmOv";
 
-const APP_VERSION = "2026-11-14.9";
+const APP_VERSION = "2026-11-20.1";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // Openbare sleutel voor meldingen (de geheime helft staat alleen in Supabase)
 const VAPID_PUBLIC_KEY = "BGR6pIIsSfrnR_2S9IkofrMZ-j7-u0G0gYC2XPo4sj8V_E2pODcX2HxNRKLiUBS0R80C5Rrk6DDHBLEuenkv1d8";
@@ -5455,6 +5455,16 @@ function untappdScore(u, d) {
   }
   return best;
 }
+// Alcoholvrij en gewoon bier nooit door elkaar halen, en ook geen duidelijk ander alcoholpercentage
+const ZERO_RE = /0[.,]0\b|\b0 ?%|alcohol.?free|non.?alcoholic|alcoholvrij|alkoholfrei|sans alcool|\bzero\b/i;
+function utCompatible(utName, utAbv, beer) {
+  const ua = parseFloat(String(utAbv ?? "").replace(",", ".")), ba = beer?.abv == null || beer.abv === "" ? NaN : Number(beer.abv);
+  const zu = ZERO_RE.test(utName || "") || (isFinite(ua) && ua < 0.6);
+  const zb = ZERO_RE.test(beer?.name || "") || (isFinite(ba) && ba < 0.6);
+  if (zu !== zb) return false;
+  if (isFinite(ua) && ua > 0 && isFinite(ba) && ba > 0 && Math.abs(ua - ba) >= 1.5) return false;
+  return true;
+}
 const UT_STYLES = [
   [/non-alcoholic|alcohol-free/, "Alcoholvrij"], [/radler|shandy/, "Radler"], [/new england|hazy/, "NEIPA"],
   [/\bipl\b|india pale lager/, "Lager / Helles"], [/\bipa\b/, "IPA"], [/pale ale/, "Pale Ale"],
@@ -5622,7 +5632,7 @@ async function analyzeUntappd(file) {
     const appOnly = [];
     for (let from = 0; ; from += 1000) {
       const { data, error } = await sb.from("checkins")
-        .select("id, beer_id, drunk_at, tz, rating, notes, serving, location_name, latitude, photo_path, flavors, with_names, beer:beers(id, name, brewery, untappd_id)")
+        .select("id, beer_id, drunk_at, tz, rating, notes, serving, location_name, latitude, photo_path, flavors, with_names, beer:beers(id, name, brewery, untappd_id, abv)")
         .eq("user_id", state.user.id).is("untappd_checkin_id", null).range(from, from + 999);
       if (error) break;
       appOnly.push(...data);
@@ -5636,7 +5646,7 @@ async function analyzeUntappd(file) {
       if (!near.length) continue;
       const u = { bt: utToks(r.brewery_name || ""), nts: utNameVariants(r.beer_name).map(utToks) };
       const sameBeer = c => (c.beer?.untappd_id && String(c.beer.untappd_id) === String(r.bid))
-        || untappdScore(u, { bt: utToks(c.beer?.brewery || ""), nt: utToks(c.beer?.name || "") }) >= 0.5;
+        || (utCompatible(r.beer_name, r.beer_abv, c.beer) && untappdScore(u, { bt: utToks(c.beer?.brewery || ""), nt: utToks(c.beer?.name || "") }) >= 0.5);
       let hit = near.filter(sameBeer).sort((a, b) => Math.abs(new Date(a.drunk_at) - t) - Math.abs(new Date(b.drunk_at) - t))[0];
       // Eén check-in binnen 10 minuten en verder niets in de buurt: dat is hem, ook als de naam anders gespeld is
       if (!hit) {
@@ -5648,7 +5658,8 @@ async function analyzeUntappd(file) {
       taken.add(hit.id);
       r._match = hit;
       twins.push(r);
-      if (hit.beer && !linkFromMatch.has(String(r.bid))) linkFromMatch.set(String(r.bid), hit.beer);
+      // Alleen het bier overnemen als het echt hetzelfde bier kan zijn (niet 0,0% tegenover gewoon)
+      if (hit.beer && utCompatible(r.beer_name, r.beer_abv, hit.beer) && !linkFromMatch.has(String(r.bid))) linkFromMatch.set(String(r.bid), hit.beer);
     }
     const groups = new Map();
     for (const r of todo) {
@@ -5664,7 +5675,10 @@ async function analyzeUntappd(file) {
       if (viaApp) { plan.sure.push({ g, beer: viaApp }); continue; }
       const u = { bt: utToks(g.brewery || ""), nts: utNameVariants(g.name).map(utToks) };
       let best = null, score = 0;
-      for (const d of dbT) { const s = untappdScore(u, d); if (s > score) { score = s; best = d.b; if (s >= 1) break; } }
+      for (const d of dbT) {
+        if (!utCompatible(g.name, g.abv, d.b)) continue;
+        const s = untappdScore(u, d); if (s > score) { score = s; best = d.b; if (s >= 1) break; }
+      }
       if (score >= 1) plan.sure.push({ g, beer: best });
       else if (score >= 0.5) plan.maybe.push({ g, beer: best });
       else plan.fresh.push({ g });
